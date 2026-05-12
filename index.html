@@ -1,0 +1,2843 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#18181b" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23f59e0b'/%3E%3Ctext y='70' x='50' font-size='60' text-anchor='middle' fill='white'%3E📦%3C/text%3E%3C/svg%3E" />
+<title>ハコシフ - 配達シフト管理</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  html, body { background: #18181b; color: #f4f4f5; min-height: 100vh; -webkit-tap-highlight-color: transparent; }
+  body { font-family: "Hiragino Sans", "Noto Sans JP", -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: #27272a; }
+  ::-webkit-scrollbar-thumb { background: #52525b; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #71717a; }
+  @keyframes slide-in { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+  .animate-slide-in { animation: slide-in 0.2s ease-out; }
+  @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
+  .animate-shake { animation: shake 0.4s; }
+  .loading-screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; color: #71717a; }
+</style>
+</head>
+<body>
+<div id="root">
+  <div class="loading-screen">
+    <div style="text-align:center">
+      <div style="font-size:14px;margin-bottom:8px">読み込み中...</div>
+      <div style="font-size:11px;color:#52525b">初回はネット接続が必要です</div>
+    </div>
+  </div>
+</div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo, useCallback, createContext, useContext, Fragment } = React;
+
+// ========== インラインSVGアイコン ==========
+const SVG = {
+  Truck: '<path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/>',
+  Calendar: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>',
+  CalendarDays: '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 2v4"/><path d="M16 2v4"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/>',
+  CalendarRange: '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M3 10h18"/><path d="M8 2v4"/><path d="M17 14h-6"/><path d="M13 18H7"/><path d="M7 14h.01"/><path d="M17 18h.01"/>',
+  CalendarCheck: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/>',
+  Users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  Clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  CalendarOff: '<path d="M4.2 4.2A2 2 0 0 0 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 1.79-1.11"/><path d="M21 15.5V6a2 2 0 0 0-2-2H9.5"/><path d="M16 2v4"/><path d="M3 10h7"/><path d="M21 10h-5.5"/><path d="m2 2 20 20"/>',
+  Plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  Trash2: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>',
+  Edit2: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>',
+  X: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  Check: '<path d="M20 6 9 17l-5-5"/>',
+  Sparkles: '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>',
+  ChevronLeft: '<path d="m15 18-6-6 6-6"/>',
+  ChevronRight: '<path d="m9 18 6-6-6-6"/>',
+  Download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
+  Save: '<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>',
+  MapPin: '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
+  Loader2: '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
+  Search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  Menu: '<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>',
+  AlertTriangle: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  Settings: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2"/><circle cx="12" cy="12" r="3"/>',
+  Eye: '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
+  ShieldCheck: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+  Repeat: '<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
+  UsersRound: '<path d="M18 21a8 8 0 0 0-16 0"/><circle cx="10" cy="8" r="5"/><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"/>',
+  Filter: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
+  Lock: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  LogOut: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
+  Shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
+  KeyRound: '<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/>',
+  Sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+  HelpCircle: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+  Bell: '<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>',
+  CalendarHeart: '<path d="M3 10h18V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2Z"/><path d="M8 2v4"/><path d="M16 2v4"/><path d="M21 15a3 3 0 0 0-5.5-1.7A3 3 0 0 0 10 15c0 3 4.5 5 5.5 5s5.5-2 5.5-5Z"/>',
+  Megaphone: '<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>',
+  Pin: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
+  Send: '<path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/>',
+};
+
+const Icon = ({ name, className = "" }) => {
+  const path = SVG[name] || SVG.HelpCircle;
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"
+      fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      className={`inline-block flex-shrink-0 ${className}`}
+      dangerouslySetInnerHTML={{ __html: path }} />
+  );
+};
+
+// ========== 定数・ヘルパー ==========
+const PREFIX = 'hakoshift';
+const CONSECUTIVE_WORK_LIMIT = 7;
+const DEFAULT_PASSCODE = '0000';
+const DOW = ['日', '月', '火', '水', '木', '金', '土'];
+// 日本の祝日（2025〜2027年）
+const JP_HOLIDAYS = {
+  '2025-01-01': '元日',
+  '2025-01-13': '成人の日',
+  '2025-02-11': '建国記念の日',
+  '2025-02-23': '天皇誕生日',
+  '2025-02-24': '振替休日',
+  '2025-03-20': '春分の日',
+  '2025-04-29': '昭和の日',
+  '2025-05-03': '憲法記念日',
+  '2025-05-04': 'みどりの日',
+  '2025-05-05': 'こどもの日',
+  '2025-05-06': '振替休日',
+  '2025-07-21': '海の日',
+  '2025-08-11': '山の日',
+  '2025-09-15': '敬老の日',
+  '2025-09-23': '秋分の日',
+  '2025-10-13': 'スポーツの日',
+  '2025-11-03': '文化の日',
+  '2025-11-23': '勤労感謝の日',
+  '2025-11-24': '振替休日',
+  '2026-01-01': '元日',
+  '2026-01-12': '成人の日',
+  '2026-02-11': '建国記念の日',
+  '2026-02-23': '天皇誕生日',
+  '2026-03-20': '春分の日',
+  '2026-04-29': '昭和の日',
+  '2026-05-03': '憲法記念日',
+  '2026-05-04': 'みどりの日',
+  '2026-05-05': 'こどもの日',
+  '2026-05-06': '振替休日',
+  '2026-07-20': '海の日',
+  '2026-08-11': '山の日',
+  '2026-09-21': '敬老の日',
+  '2026-09-22': '国民の休日',
+  '2026-09-23': '秋分の日',
+  '2026-10-12': 'スポーツの日',
+  '2026-11-03': '文化の日',
+  '2026-11-23': '勤労感謝の日',
+  '2027-01-01': '元日',
+  '2027-01-11': '成人の日',
+  '2027-02-11': '建国記念の日',
+  '2027-02-23': '天皇誕生日',
+  '2027-03-21': '春分の日',
+  '2027-03-22': '振替休日',
+  '2027-04-29': '昭和の日',
+  '2027-05-03': '憲法記念日',
+  '2027-05-04': 'みどりの日',
+  '2027-05-05': 'こどもの日',
+  '2027-07-19': '海の日',
+  '2027-08-11': '山の日',
+  '2027-09-20': '敬老の日',
+  '2027-09-23': '秋分の日',
+  '2027-10-11': 'スポーツの日',
+  '2027-11-03': '文化の日',
+  '2027-11-23': '勤労感謝の日',
+};
+const COLOR_PALETTE = ['#3b82f6','#10b981','#f59e0b','#ef4444','#a855f7','#ec4899','#06b6d4','#84cc16','#f97316','#6366f1'];
+
+const pad = (n) => String(n).padStart(2, '0');
+const ym = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+const parseYmd = (s) => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); };
+
+const getDaysInMonth = (yearMonth) => {
+  const [y, m] = yearMonth.split('-').map(Number);
+  const last = new Date(y, m, 0).getDate();
+  return Array.from({ length: last }, (_, i) => {
+    const d = new Date(y, m - 1, i + 1);
+    return { date: ymd(d), day: i + 1, dow: d.getDay() };
+  });
+};
+
+const monthLabel = (yearMonth) => {
+  const [y, m] = yearMonth.split('-').map(Number);
+  return `${y}年${m}月`;
+};
+
+const shiftMonth = (yearMonth, delta) => {
+  const [y, m] = yearMonth.split('-').map(Number);
+  return ym(new Date(y, m - 1 + delta, 1));
+};
+
+// 週の月曜日を取得（月曜始まり）
+const getMondayOf = (date) => {
+  const d = new Date(date);
+  const dow = d.getDay();
+  const diff = dow === 0 ? -6 : 1 - dow; // 日曜は-6、月曜は0、火曜は-1
+  d.setDate(d.getDate() + diff);
+  return d;
+};
+
+const getWeekDays = (mondayDate) => {
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(mondayDate);
+    d.setDate(d.getDate() + i);
+    return { date: ymd(d), day: d.getDate(), dow: d.getDay(), month: d.getMonth() + 1 };
+  });
+};
+
+const weekLabel = (mondayDate) => {
+  const sunday = new Date(mondayDate);
+  sunday.setDate(sunday.getDate() + 6);
+  const sm = mondayDate.getMonth() + 1;
+  const em = sunday.getMonth() + 1;
+  if (sm === em) {
+    return `${mondayDate.getFullYear()}年${sm}月${mondayDate.getDate()}日〜${sunday.getDate()}日`;
+  }
+  return `${mondayDate.getFullYear()}年${sm}/${mondayDate.getDate()}〜${em}/${sunday.getDate()}`;
+};
+
+const dayLabel = (date) => {
+  const d = parseYmd(date);
+  return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${DOW[d.getDay()]}）`;
+};
+
+const shiftDate = (dateStr, deltaDays) => {
+  const d = parseYmd(dateStr);
+  d.setDate(d.getDate() + deltaDays);
+  return ymd(d);
+};
+
+const normalizeShift = (v) => {
+  if (!v) return null;
+  if (v === 'off') return 'off';
+  if (v === 'reqoff') return 'reqoff';
+  if (Array.isArray(v)) {
+    return v.map(slot => {
+      if (!slot) return null;
+      if (typeof slot === 'string') return { shiftTypeId: slot, area: '' };
+      return { shiftTypeId: slot.shiftTypeId, area: slot.area || '' };
+    });
+  }
+  if (typeof v === 'string') return [{ shiftTypeId: v, area: '' }, null];
+  return null;
+};
+
+// localStorage
+const useStorage = (key, defaultValue) => {
+  const fullKey = `${PREFIX}:${key}`;
+  const [value, setValue] = useState(() => {
+    try {
+      const raw = localStorage.getItem(fullKey);
+      return raw ? JSON.parse(raw) : defaultValue;
+    } catch (e) { return defaultValue; }
+  });
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(fullKey);
+      if (raw) setValue(JSON.parse(raw));
+      else setValue(defaultValue);
+    } catch (e) {}
+  }, [fullKey]);
+  const save = useCallback(async (next) => {
+    setValue(prev => {
+      const resolved = typeof next === 'function' ? next(prev) : next;
+      try { localStorage.setItem(fullKey, JSON.stringify(resolved)); } catch (e) {}
+      return resolved;
+    });
+  }, [fullKey]);
+  return [value, save];
+};
+
+const DEFAULT_SHIFT_TYPES = [
+  { id: 'st_morning', name: '早朝便', time: '5:00-9:00', color: '#3b82f6' },
+  { id: 'st_am', name: '午前便', time: '9:00-13:00', color: '#10b981' },
+  { id: 'st_pm', name: '夕方便', time: '14:00-19:00', color: '#f59e0b' },
+];
+const DEFAULT_AI_SETTINGS = { warnConsecutiveDays: CONSECUTIVE_WORK_LIMIT, weeklyPatterns: {} };
+const DEFAULT_AUTH_CONFIG = { passcode: DEFAULT_PASSCODE };
+
+const isFixedDayOff = (staff, dow) => Array.isArray(staff?.fixedDayOff) && staff.fixedDayOff.includes(dow);
+const isWorkingCell = (v) => {
+  if (!v || v === 'off' || v === 'reqoff') return false;
+  if (Array.isArray(v)) return v.some(slot => slot && slot.shiftTypeId);
+  return false;
+};
+
+// ========== コンテキスト ==========
+const AuthContext = createContext(null);
+const useAuth = () => useContext(AuthContext);
+const DialogContext = createContext(null);
+const useDialog = () => useContext(DialogContext);
+
+function DialogProvider({ children }) {
+  const [dialog, setDialog] = useState(null);
+  const confirm = useCallback((opts) => new Promise((resolve) => {
+    setDialog({ type: 'confirm', title: opts.title || '確認', message: opts.message,
+      confirmText: opts.confirmText || '削除', cancelText: opts.cancelText || 'キャンセル',
+      danger: opts.danger !== false,
+      onResult: (res) => { setDialog(null); resolve(res); } });
+  }), []);
+  const alert = useCallback((opts) => new Promise((resolve) => {
+    setDialog({ type: 'alert', title: opts.title || 'お知らせ', message: opts.message,
+      confirmText: 'OK', onResult: () => { setDialog(null); resolve(); } });
+  }), []);
+  return (
+    <DialogContext.Provider value={{ confirm, alert }}>
+      {children}
+      {dialog && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="bg-zinc-800 border border-zinc-700 rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden">
+            <div className="p-5">
+              <div className="flex items-start gap-3">
+                {dialog.danger && dialog.type === 'confirm' && (
+                  <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
+                    <Icon name="AlertTriangle" className="w-5 h-5 text-red-400" />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <h3 className="font-semibold text-zinc-100 text-base">{dialog.title}</h3>
+                  <p className="text-sm text-zinc-400 mt-1 whitespace-pre-line">{dialog.message}</p>
+                </div>
+              </div>
+            </div>
+            <div className="px-5 pb-5 flex gap-2 justify-end">
+              {dialog.type === 'confirm' && (
+                <button onClick={() => dialog.onResult(false)} className="px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-700 rounded-lg">
+                  {dialog.cancelText}
+                </button>
+              )}
+              <button onClick={() => dialog.onResult(true)}
+                className={`px-4 py-2 text-sm font-semibold text-white rounded-lg ${dialog.danger && dialog.type === 'confirm' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                {dialog.confirmText}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </DialogContext.Provider>
+  );
+}
+
+// ========== アラート計算 ==========
+const calcConsecutiveAlerts = (staff, days, shifts, dayOff, limit) => {
+  const result = {};
+  staff.forEach(s => {
+    const alertSet = new Set();
+    let streak = 0;
+    days.forEach(d => {
+      const v = normalizeShift(shifts[`${d.date}:${s.id}`]);
+      const isReq = (dayOff[s.id] || []).includes(d.date);
+      const isOff = v === 'off' || v === 'reqoff' || isReq;
+      const isWork = !isOff && isWorkingCell(v);
+      if (isWork) { streak++; if (streak >= limit) alertSet.add(d.date); }
+      else streak = 0;
+    });
+    result[s.id] = alertSet;
+  });
+  return result;
+};
+
+const calcVehicleOverlapAlerts = (staff, days, shifts) => {
+  const overlapMap = {};
+  days.forEach(d => {
+    const groups = {};
+    staff.forEach(s => {
+      if (!s.vehicle) return;
+      const v = normalizeShift(shifts[`${d.date}:${s.id}`]);
+      if (!v || v === 'off' || v === 'reqoff' || !Array.isArray(v)) return;
+      v.forEach(slot => {
+        if (!slot || !slot.shiftTypeId) return;
+        const key = `${s.vehicle}|${slot.shiftTypeId}`;
+        (groups[key] = groups[key] || []).push(s.id);
+      });
+    });
+    Object.entries(groups).forEach(([key, sids]) => {
+      if (sids.length > 1) sids.forEach(sid => {
+        const k = `${d.date}:${sid}`;
+        (overlapMap[k] = overlapMap[k] || new Set()).add(key);
+      });
+    });
+  });
+  return overlapMap;
+};
+
+const calcAreaOverlapAlerts = (staff, days, shifts) => {
+  const overlapMap = {};
+  days.forEach(d => {
+    const groups = {};
+    staff.forEach(s => {
+      const v = normalizeShift(shifts[`${d.date}:${s.id}`]);
+      if (!v || v === 'off' || v === 'reqoff' || !Array.isArray(v)) return;
+      v.forEach(slot => {
+        if (!slot || !slot.shiftTypeId) return;
+        const area = slot.area || s.area || '';
+        if (!area) return;
+        const key = `${area}|${slot.shiftTypeId}`;
+        (groups[key] = groups[key] || []).push(s.id);
+      });
+    });
+    Object.entries(groups).forEach(([key, sids]) => {
+      if (sids.length > 1) sids.forEach(sid => {
+        const k = `${d.date}:${sid}`;
+        (overlapMap[k] = overlapMap[k] || new Set()).add(key);
+      });
+    });
+  });
+  return overlapMap;
+};
+
+// ========== AI生成 ==========
+const generateShifts = (staff, days, dayOff, shiftTypes, aiSettings) => {
+  const limit = aiSettings.warnConsecutiveDays || CONSECUTIVE_WORK_LIMIT;
+  const result = {};
+  staff.forEach(s => (dayOff[s.id] || []).forEach(date => { result[`${date}:${s.id}`] = 'reqoff'; }));
+  const streak = {};
+  staff.forEach(s => { streak[s.id] = 0; });
+
+  days.forEach(d => {
+    const usedV = {}, usedA = {};
+    staff.forEach(s => {
+      const key = `${d.date}:${s.id}`;
+      if (result[key] === 'reqoff') { streak[s.id] = 0; return; }
+      if (isFixedDayOff(s, d.dow)) { result[key] = 'off'; streak[s.id] = 0; return; }
+      if (streak[s.id] >= limit - 1) { result[key] = 'off'; streak[s.id] = 0; return; }
+
+      const pattern = aiSettings.weeklyPatterns?.[s.id];
+      let candidates = [];
+      if (pattern && pattern[d.dow] !== undefined) {
+        if (pattern[d.dow] === null) { result[key] = 'off'; streak[s.id] = 0; return; }
+        candidates = [pattern[d.dow]];
+        shiftTypes.forEach(st => { if (st.id !== pattern[d.dow]) candidates.push(st.id); });
+      } else if (s.defaultShiftType) {
+        candidates = [s.defaultShiftType];
+        shiftTypes.forEach(st => { if (st.id !== s.defaultShiftType) candidates.push(st.id); });
+      } else { streak[s.id] = 0; return; }
+
+      let assigned = null;
+      for (const stId of candidates) {
+        const vK = s.vehicle ? `${s.vehicle}|${stId}` : null;
+        const aK = s.area ? `${s.area}|${stId}` : null;
+        if (!(vK && usedV[vK]) && !(aK && usedA[aK])) {
+          assigned = stId;
+          if (vK) usedV[vK] = s.id;
+          if (aK) usedA[aK] = s.id;
+          break;
+        }
+      }
+      if (assigned) {
+        result[key] = [{ shiftTypeId: assigned, area: s.area || '' }, null];
+        streak[s.id] += 1;
+      } else { result[key] = 'off'; streak[s.id] = 0; }
+    });
+  });
+  return result;
+};
+
+// ========== メインApp ==========
+function App() {
+  return <DialogProvider><HakoShift /></DialogProvider>;
+}
+
+function HakoShift() {
+  const [activeTab, setActiveTab] = useState('shifts');
+  const [viewMode, setViewMode] = useStorage('viewMode', 'month'); // 'day' | 'week' | 'month'
+  const [currentMonth, setCurrentMonth] = useState(ym(new Date()));
+  const [currentDate, setCurrentDate] = useState(ymd(new Date()));
+  const [currentWeekStart, setCurrentWeekStart] = useState(ymd(getMondayOf(new Date())));
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [role, setRole] = useState(null);
+  const [showLogin, setShowLogin] = useState(false);
+
+  const [staff, setStaff] = useStorage('staff', []);
+  const [shiftTypes, setShiftTypes] = useStorage('shiftTypes', DEFAULT_SHIFT_TYPES);
+  const [dayOff, setDayOff] = useStorage('dayOff', {});
+  const [areas, setAreas] = useStorage('areas', []);
+  const [roles, setRoles] = useStorage('roles', []);
+  const [shifts, setShifts] = useStorage(`shifts:${currentMonth}`, {});
+  const [aiSettings, setAiSettings] = useStorage('aiSettings', DEFAULT_AI_SETTINGS);
+  const [teams, setTeams] = useStorage('teams', []);
+  const [authConfig, setAuthConfig] = useStorage('authConfig', DEFAULT_AUTH_CONFIG);
+  const [customHolidays, setCustomHolidays] = useStorage('customHolidays', {});
+  const [announcements, setAnnouncements] = useStorage('announcements', []);
+
+  // 表示中の月から日付配列を生成（月モード用）
+  const days = useMemo(() => getDaysInMonth(currentMonth), [currentMonth]);
+
+  // 週/日モードで使う日付計算 - 表示している日/週の月のシフトを別途読み込む必要がある
+  // currentDate / currentWeekStart の月が currentMonth と異なる場合に対応
+  const visibleMonth = useMemo(() => {
+    if (viewMode === 'day') return ym(parseYmd(currentDate));
+    if (viewMode === 'week') {
+      const m = parseYmd(currentWeekStart);
+      const sun = new Date(m); sun.setDate(sun.getDate() + 6);
+      // 週の中で月をまたぐ場合は両方読む必要があるが、簡略化して開始日の月を使用
+      return ym(m);
+    }
+    return currentMonth;
+  }, [viewMode, currentDate, currentWeekStart, currentMonth]);
+
+  // viewMode変更時、currentMonth を visibleMonth に同期
+  useEffect(() => {
+    if (visibleMonth !== currentMonth) setCurrentMonth(visibleMonth);
+  }, [visibleMonth]);
+
+  // 週が月をまたぐ場合の追加月読み込み（useStorage二重呼び出し回避）
+  const extraMonthKey = useMemo(() => {
+    if (viewMode !== 'week') return null;
+    const m = parseYmd(currentWeekStart);
+    const sun = new Date(m); sun.setDate(sun.getDate() + 6);
+    const otherMonth = ym(sun) !== ym(m) ? ym(sun) : null;
+    if (otherMonth && otherMonth !== currentMonth) return otherMonth;
+    return null;
+  }, [viewMode, currentWeekStart, currentMonth]);
+
+  const [extraShifts, setExtraShiftsRaw] = useState({});
+  useEffect(() => {
+    if (!extraMonthKey) { setExtraShiftsRaw({}); return; }
+    try {
+      const raw = localStorage.getItem(`${PREFIX}:shifts:${extraMonthKey}`);
+      setExtraShiftsRaw(raw ? JSON.parse(raw) : {});
+    } catch (e) { setExtraShiftsRaw({}); }
+  }, [extraMonthKey]);
+  const setExtraShifts = useCallback(async (next) => {
+    if (!extraMonthKey) return;
+    setExtraShiftsRaw(prev => {
+      const resolved = typeof next === 'function' ? next(prev) : next;
+      try { localStorage.setItem(`${PREFIX}:shifts:${extraMonthKey}`, JSON.stringify(resolved)); } catch (e) {}
+      return resolved;
+    });
+  }, [extraMonthKey]);
+
+  const mergedShifts = useMemo(() => {
+    if (extraMonthKey) return { ...shifts, ...extraShifts };
+    return shifts;
+  }, [shifts, extraShifts, extraMonthKey]);
+
+  // 統合シフト書き込み: どの月に属するかでルーティング
+  const setShiftsRouted = useCallback(async (updater) => {
+    const prevAll = mergedShifts;
+    const next = typeof updater === 'function' ? updater(prevAll) : updater;
+    // 月別に分ける
+    const byMonth = {};
+    Object.entries(next).forEach(([key, val]) => {
+      const date = key.split(':')[0];
+      const m = date.substring(0, 7);
+      (byMonth[m] = byMonth[m] || {})[key] = val;
+    });
+    // currentMonth に対する更新
+    const cmData = byMonth[currentMonth] || {};
+    await setShifts(cmData);
+    // 週モードで月またぎの場合
+    if (viewMode === 'week') {
+      const m = parseYmd(currentWeekStart);
+      const sun = new Date(m); sun.setDate(sun.getDate() + 6);
+      const otherMonth = ym(sun) !== ym(m) ? ym(sun) : null;
+      if (otherMonth && otherMonth !== currentMonth) {
+        await setExtraShifts(byMonth[otherMonth] || {});
+      }
+    }
+  }, [mergedShifts, currentMonth, viewMode, currentWeekStart, setShifts, setExtraShifts]);
+
+  const isAdmin = role === 'admin';
+  const isViewer = role === 'viewer';
+
+  useEffect(() => { if (isViewer && activeTab !== 'shifts') setActiveTab('shifts'); }, [isViewer, activeTab]);
+
+  const handleLogin = (passcode) => {
+    if (passcode === authConfig.passcode) { setRole('admin'); setShowLogin(false); return true; }
+    return false;
+  };
+  const handleViewerStart = () => setRole('viewer');
+  const handleLogout = () => { setRole(null); setMenuOpen(false); };
+
+  const authValue = useMemo(() => ({ role, isAdmin, isViewer, authConfig, setAuthConfig }),
+    [role, isAdmin, isViewer, authConfig, setAuthConfig]);
+
+  if (!role) {
+    return <LockScreen onAdminLogin={() => setShowLogin(true)} onViewerStart={handleViewerStart}
+      showLogin={showLogin} onLoginSubmit={handleLogin} onLoginClose={() => setShowLogin(false)} />;
+  }
+
+  return (
+    <AuthContext.Provider value={authValue}>
+      <div className="min-h-screen bg-zinc-900 text-zinc-100">
+        <Header viewMode={viewMode} setViewMode={setViewMode}
+          currentMonth={currentMonth} onMonthChange={setCurrentMonth}
+          currentDate={currentDate} setCurrentDate={setCurrentDate}
+          currentWeekStart={currentWeekStart} setCurrentWeekStart={setCurrentWeekStart}
+          onMenuClick={() => setMenuOpen(true)} activeTab={activeTab}
+          onLogout={handleLogout} onAdminLogin={() => setShowLogin(true)} />
+        {showLogin && <LoginModal onSubmit={handleLogin} onClose={() => setShowLogin(false)} />}
+        {menuOpen && <SideMenu activeTab={activeTab}
+          onChange={(t) => { setActiveTab(t); setMenuOpen(false); }}
+          onClose={() => setMenuOpen(false)} shiftTypes={shiftTypes} onLogout={handleLogout} />}
+        <main className="max-w-7xl mx-auto pb-20">
+          {activeTab === 'shifts' && (
+            <ShiftView viewMode={viewMode} setViewMode={setViewMode}
+              currentMonth={currentMonth} days={days} currentDate={currentDate}
+              currentWeekStart={currentWeekStart} setCurrentDate={setCurrentDate}
+              setCurrentWeekStart={setCurrentWeekStart}
+              staff={staff} shiftTypes={shiftTypes} dayOff={dayOff}
+              shifts={mergedShifts} setShifts={setShiftsRouted}
+              areas={areas} setAreas={setAreas}
+              aiSettings={aiSettings} teams={teams} />
+          )}
+          {activeTab === 'announcements' && (
+            <AnnouncementsView announcements={announcements} setAnnouncements={setAnnouncements} />
+          )}
+          {isAdmin && activeTab === 'staff' && (
+            <StaffView staff={staff} setStaff={setStaff} shiftTypes={shiftTypes}
+              areas={areas} setAreas={setAreas} roles={roles} setRoles={setRoles} teams={teams} />
+          )}
+          {isAdmin && activeTab === 'shiftTypes' && (
+            <ShiftTypeView shiftTypes={shiftTypes} setShiftTypes={setShiftTypes} />
+          )}
+          {isAdmin && activeTab === 'teams' && (
+            <TeamsView teams={teams} setTeams={setTeams} staff={staff} setStaff={setStaff} />
+          )}
+          {isAdmin && activeTab === 'dayOff' && (
+            <DayOffView currentMonth={currentMonth} days={days} staff={staff}
+              dayOff={dayOff} setDayOff={setDayOff} teams={teams} />
+          )}
+          {isAdmin && activeTab === 'aiSettings' && (
+            <AiSettingsView aiSettings={aiSettings} setAiSettings={setAiSettings}
+              staff={staff} shiftTypes={shiftTypes} teams={teams} />
+          )}
+          {isAdmin && activeTab === 'holidays' && (
+            <HolidaysView customHolidays={customHolidays} setCustomHolidays={setCustomHolidays} />
+          )}
+          {isAdmin && activeTab === 'security' && <SecurityView />}
+        </main>
+      </div>
+    </AuthContext.Provider>
+  );
+}
+
+// ========== ロック画面 ==========
+function LockScreen({ onAdminLogin, onViewerStart, showLogin, onLoginSubmit, onLoginClose }) {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-zinc-900 via-zinc-900 to-orange-950/30 flex flex-col items-center justify-center p-6">
+      <div className="w-full max-w-sm">
+        <div className="flex flex-col items-center mb-8">
+          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-2xl shadow-orange-500/30 mb-4">
+            <Icon name="Truck" className="w-10 h-10 text-white" />
+          </div>
+          <h1 className="text-3xl font-bold text-zinc-100">ハコシフ</h1>
+          <p className="text-sm text-zinc-400 mt-1">配達シフト管理アプリ</p>
+        </div>
+        <div className="space-y-3">
+          <button onClick={onAdminLogin}
+            className="w-full flex items-center gap-3 p-4 bg-gradient-to-br from-amber-600 to-orange-700 hover:from-amber-500 hover:to-orange-600 text-white rounded-2xl shadow-lg shadow-orange-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]">
+            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center"><Icon name="Shield" className="w-5 h-5" /></div>
+            <div className="text-left flex-1">
+              <div className="font-semibold">管理者でログイン</div>
+              <div className="text-xs opacity-80">編集・追加・削除など全機能</div>
+            </div>
+            <Icon name="Lock" className="w-4 h-4 opacity-70" />
+          </button>
+          <button onClick={onViewerStart}
+            className="w-full flex items-center gap-3 p-4 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-100 rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98]">
+            <div className="w-10 h-10 rounded-xl bg-zinc-700 flex items-center justify-center"><Icon name="Eye" className="w-5 h-5 text-zinc-300" /></div>
+            <div className="text-left flex-1">
+              <div className="font-semibold">閲覧モードで使う</div>
+              <div className="text-xs text-zinc-400">シフト表の確認のみ</div>
+            </div>
+          </button>
+        </div>
+        <p className="text-center text-[11px] text-zinc-500 mt-8">
+          初期パスコード: <code className="px-1.5 py-0.5 bg-zinc-800 rounded text-zinc-300">0000</code>
+          <br />管理者ログイン後に変更できます
+        </p>
+      </div>
+      {showLogin && <LoginModal onSubmit={onLoginSubmit} onClose={onLoginClose} />}
+    </div>
+  );
+}
+
+function LoginModal({ onSubmit, onClose }) {
+  const [passcode, setPasscode] = useState('');
+  const [error, setError] = useState(false);
+  const [shake, setShake] = useState(false);
+  const handleNumber = (n) => {
+    if (passcode.length >= 4) return;
+    setError(false);
+    const next = passcode + n;
+    setPasscode(next);
+    if (next.length === 4) setTimeout(() => {
+      const ok = onSubmit(next);
+      if (!ok) { setError(true); setShake(true); setTimeout(() => { setPasscode(''); setShake(false); }, 400); }
+    }, 100);
+  };
+  const handleDelete = () => { setError(false); setPasscode(passcode.slice(0, -1)); };
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
+      <div className={`bg-zinc-800 border border-zinc-700 rounded-3xl shadow-2xl max-w-xs w-full p-6 ${shake ? 'animate-shake' : ''}`}>
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2"><Icon name="Lock" className="w-4 h-4 text-amber-400" /><h3 className="font-semibold text-zinc-100">管理者ログイン</h3></div>
+          <button onClick={onClose} className="p-1 hover:bg-zinc-700 rounded-lg"><Icon name="X" className="w-4 h-4 text-zinc-300" /></button>
+        </div>
+        <p className="text-xs text-zinc-400 mb-4">4桁のパスコードを入力</p>
+        <div className="flex justify-center gap-3 mb-6">
+          {[0,1,2,3].map(i => <div key={i} className={`w-3 h-3 rounded-full transition-all ${error ? 'bg-red-500' : i < passcode.length ? 'bg-amber-500 scale-110' : 'bg-zinc-700'}`} />)}
+        </div>
+        {error && <div className="text-center text-xs text-red-400 mb-3">パスコードが違います</div>}
+        <div className="grid grid-cols-3 gap-2">
+          {[1,2,3,4,5,6,7,8,9].map(n => (
+            <button key={n} onClick={() => handleNumber(String(n))} className="aspect-square text-xl font-semibold text-zinc-100 bg-zinc-700 hover:bg-zinc-600 active:bg-amber-600 rounded-xl transition-colors">{n}</button>
+          ))}
+          <div></div>
+          <button onClick={() => handleNumber('0')} className="aspect-square text-xl font-semibold text-zinc-100 bg-zinc-700 hover:bg-zinc-600 active:bg-amber-600 rounded-xl transition-colors">0</button>
+          <button onClick={handleDelete} disabled={passcode.length === 0} className="aspect-square text-zinc-300 bg-zinc-700/50 hover:bg-zinc-700 disabled:opacity-30 rounded-xl transition-colors flex items-center justify-center">
+            <Icon name="X" className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ========== ヘッダー（モード対応版） ==========
+function Header({ viewMode, setViewMode, currentMonth, onMonthChange, currentDate, setCurrentDate,
+  currentWeekStart, setCurrentWeekStart, onMenuClick, activeTab, onLogout, onAdminLogin }) {
+  const { isAdmin } = useAuth();
+
+  let title = '', navHandlers = null;
+  if (activeTab !== 'shifts') {
+    const [y, m] = currentMonth.split('-').map(Number);
+    title = `${m}月`;
+  } else if (viewMode === 'day') {
+    const d = parseYmd(currentDate);
+    title = `${d.getMonth()+1}/${d.getDate()}（${DOW[d.getDay()]}）`;
+    navHandlers = {
+      prev: () => setCurrentDate(shiftDate(currentDate, -1)),
+      today: () => setCurrentDate(ymd(new Date())),
+      next: () => setCurrentDate(shiftDate(currentDate, 1)),
+    };
+  } else if (viewMode === 'week') {
+    const m = parseYmd(currentWeekStart);
+    title = `${m.getMonth()+1}/${m.getDate()}〜`;
+    navHandlers = {
+      prev: () => setCurrentWeekStart(shiftDate(currentWeekStart, -7)),
+      today: () => setCurrentWeekStart(ymd(getMondayOf(new Date()))),
+      next: () => setCurrentWeekStart(shiftDate(currentWeekStart, 7)),
+    };
+  } else {
+    const [y, m] = currentMonth.split('-').map(Number);
+    title = `${m}月`;
+    navHandlers = {
+      prev: () => onMonthChange(shiftMonth(currentMonth, -1)),
+      today: () => onMonthChange(ym(new Date())),
+      next: () => onMonthChange(shiftMonth(currentMonth, 1)),
+    };
+  }
+
+  return (
+    <header className="sticky top-0 z-30 bg-zinc-900 border-b border-zinc-800">
+      <div className="px-3 py-3 flex items-center gap-2">
+        <button onClick={onMenuClick} className="p-2 hover:bg-zinc-800 rounded-full"><Icon name="Menu" className="w-5 h-5 text-zinc-300" /></button>
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <span className="text-base sm:text-xl font-normal text-zinc-100 truncate">{title}</span>
+          {isAdmin ? (
+            <span className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 bg-amber-500/20 text-amber-300 text-[10px] font-bold rounded-full">
+              <Icon name="Shield" className="w-2.5 h-2.5" />管理者
+            </span>
+          ) : (
+            <span className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 bg-zinc-700 text-zinc-400 text-[10px] font-bold rounded-full">
+              <Icon name="Eye" className="w-2.5 h-2.5" />閲覧
+            </span>
+          )}
+        </div>
+        {navHandlers && (
+          <div className="flex items-center gap-0">
+            <button onClick={navHandlers.prev} className="p-2 hover:bg-zinc-800 rounded-full"><Icon name="ChevronLeft" className="w-5 h-5 text-zinc-300" /></button>
+            <button onClick={navHandlers.today} className="px-2 py-1 text-xs font-medium text-zinc-400 hover:bg-zinc-800 rounded-md">今日</button>
+            <button onClick={navHandlers.next} className="p-2 hover:bg-zinc-800 rounded-full"><Icon name="ChevronRight" className="w-5 h-5 text-zinc-300" /></button>
+          </div>
+        )}
+        {isAdmin ? (
+          <button onClick={onLogout} className="p-2 hover:bg-zinc-800 rounded-full"><Icon name="LogOut" className="w-4 h-4 text-zinc-300" /></button>
+        ) : (
+          <button onClick={onAdminLogin} className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium rounded-full flex items-center gap-1">
+            <Icon name="Lock" className="w-3 h-3" />管理者
+          </button>
+        )}
+      </div>
+      {/* 表示モードタブ */}
+      {activeTab === 'shifts' && (
+        <div className="px-3 pb-2 flex items-center gap-1">
+          {[
+            { id: 'day', label: '日', icon: 'Sun' },
+            { id: 'week', label: '週', icon: 'CalendarRange' },
+            { id: 'month', label: '月', icon: 'CalendarDays' },
+          ].map(m => (
+            <button key={m.id} onClick={() => setViewMode(m.id)}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                viewMode === m.id ? 'bg-amber-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
+              }`}>
+              <Icon name={m.icon} className="w-3.5 h-3.5" />
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </header>
+  );
+}
+
+// ========== サイドメニュー ==========
+function SideMenu({ activeTab, onChange, onClose, shiftTypes, onLogout }) {
+  const { isAdmin } = useAuth();
+  const allItems = [
+    { id: 'shifts', label: 'シフト表', icon: 'Calendar', adminOnly: false },
+    { id: 'announcements', label: 'お知らせ', icon: 'Bell', adminOnly: false },
+    { id: 'staff', label: 'スタッフ', icon: 'Users', adminOnly: true },
+    { id: 'teams', label: '班', icon: 'UsersRound', adminOnly: true },
+    { id: 'shiftTypes', label: 'シフト区分', icon: 'Clock', adminOnly: true },
+    { id: 'aiSettings', label: 'AI設定', icon: 'Sparkles', adminOnly: true },
+    { id: 'dayOff', label: '希望休', icon: 'CalendarOff', adminOnly: true },
+    { id: 'holidays', label: '祝祭日・休業日', icon: 'CalendarHeart', adminOnly: true },
+    { id: 'security', label: 'セキュリティ', icon: 'KeyRound', adminOnly: true },
+  ];
+  const items = allItems.filter(item => !item.adminOnly || isAdmin);
+
+  return (
+    <div className="fixed inset-0 z-40 flex">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <aside className="relative w-72 bg-zinc-800 h-full overflow-y-auto shadow-2xl animate-slide-in flex flex-col">
+        <div className="p-5 border-b border-zinc-700">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center"><Icon name="Truck" className="w-5 h-5 text-white" /></div>
+            <div className="flex-1">
+              <div className="font-bold text-lg text-zinc-100">ハコシフ</div>
+              <div className="text-xs text-zinc-400">配達シフト管理</div>
+            </div>
+          </div>
+          <div className="mt-3">
+            {isAdmin ? (
+              <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-500/20 text-amber-300 text-xs font-semibold rounded-full"><Icon name="Shield" className="w-3 h-3" />管理者</span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2 py-1 bg-zinc-700 text-zinc-300 text-xs font-semibold rounded-full"><Icon name="Eye" className="w-3 h-3" />閲覧モード</span>
+            )}
+          </div>
+        </div>
+        <nav className="py-2 flex-1">
+          {items.map(item => {
+            const active = activeTab === item.id;
+            return (
+              <button key={item.id} onClick={() => onChange(item.id)}
+                className={`w-full flex items-center gap-4 px-5 py-3 text-sm transition-colors ${
+                  active ? 'bg-amber-500/15 text-amber-400 border-r-4 border-amber-500' : 'text-zinc-300 hover:bg-zinc-700'
+                }`}>
+                <Icon name={item.icon} className="w-5 h-5" />
+                <span className="font-medium">{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+        <div className="px-5 py-3 border-t border-zinc-700">
+          <div className="text-xs font-semibold text-zinc-500 mb-2">凡例</div>
+          <div className="space-y-1.5 mb-3">
+            {shiftTypes.slice(0, 4).map(st => (
+              <div key={st.id} className="flex items-center gap-2 text-xs text-zinc-300">
+                <span className="w-3 h-3 rounded-sm" style={{ background: st.color }}></span><span>{st.name}</span>
+              </div>
+            ))}
+            <div className="flex items-center gap-2 text-xs text-red-400"><span className="w-3 h-3 rounded-sm bg-red-500"></span><span>希望休</span></div>
+            <div className="flex items-center gap-2 text-xs text-zinc-400"><span className="w-3 h-3 rounded-sm bg-zinc-600 border border-zinc-500"></span><span>公休</span></div>
+          </div>
+          <button onClick={onLogout} className="w-full flex items-center gap-2 px-3 py-2 text-zinc-400 hover:text-red-300 hover:bg-red-900/20 rounded-lg text-sm font-medium transition-colors">
+            <Icon name="LogOut" className="w-4 h-4" />ログアウト
+          </button>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+// ========== シフトビュー（モード切替） ==========
+function ShiftView(props) {
+  const { viewMode } = props;
+  if (viewMode === 'day') return <ShiftDayView {...props} />;
+  if (viewMode === 'week') return <ShiftWeekView {...props} />;
+  return <ShiftMonthView {...props} />;
+}
+
+// ========== 共通: ツールバー ==========
+function ShiftToolbar({ onAutoGen, generating, onClearMonth, onExportCSV, searchQuery, setSearchQuery, isAdmin, monthLabel, hideMonthlyOps }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 px-3 pt-3">
+      {isAdmin && !hideMonthlyOps && (
+        <Fragment>
+          <button onClick={onAutoGen} disabled={generating}
+            className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-br from-amber-500 to-orange-600 text-white text-sm font-medium rounded-full shadow-md disabled:opacity-60">
+            <Icon name={generating ? 'Loader2' : 'Sparkles'} className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
+            {generating ? '生成中' : 'AI自動生成'}
+          </button>
+          <button onClick={onClearMonth}
+            className="flex items-center gap-1.5 px-3 py-2 bg-zinc-800 border border-zinc-700 text-zinc-400 text-sm font-medium rounded-full hover:bg-red-900/30 hover:text-red-300">
+            <Icon name="Trash2" className="w-4 h-4" />月次クリア
+          </button>
+        </Fragment>
+      )}
+      <button onClick={onExportCSV} className="flex items-center gap-1.5 px-3 py-2 bg-zinc-800 border border-zinc-700 text-zinc-200 text-sm font-medium rounded-full hover:bg-zinc-700">
+        <Icon name="Download" className="w-4 h-4" />CSV
+      </button>
+      <div className="flex-1 min-w-[140px] relative">
+        <Icon name="Search" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+        <input type="text" placeholder="検索" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full pl-9 pr-3 py-2 text-sm bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 rounded-full focus:outline-none focus:ring-2 focus:ring-amber-500" />
+      </div>
+    </div>
+  );
+}
+
+// ========== 共通: 班フィルター ==========
+function TeamFilter({ teams, selectedTeamId, setSelectedTeamId }) {
+  if (teams.length === 0) return null;
+  return (
+    <div className="px-3 flex items-center gap-2 overflow-x-auto pb-1">
+      <Icon name="Filter" className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0" />
+      <button onClick={() => setSelectedTeamId('all')}
+        className={`flex-shrink-0 px-3 py-1 text-xs font-medium rounded-full ${selectedTeamId === 'all' ? 'bg-amber-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}`}>全員</button>
+      {teams.map(t => (
+        <button key={t.id} onClick={() => setSelectedTeamId(t.id)}
+          className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-full ${selectedTeamId === t.id ? 'text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}`}
+          style={selectedTeamId === t.id ? { background: t.color } : {}}>
+          <span className="w-2 h-2 rounded-full" style={{ background: t.color }}></span>{t.name}
+        </button>
+      ))}
+      <button onClick={() => setSelectedTeamId('none')}
+        className={`flex-shrink-0 px-3 py-1 text-xs font-medium rounded-full ${selectedTeamId === 'none' ? 'bg-zinc-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}`}>未所属</button>
+    </div>
+  );
+}
+
+// ========== 日表示 ==========
+function ShiftDayView({ currentDate, setCurrentDate, staff, shiftTypes, dayOff, shifts, setShifts, areas, setAreas, aiSettings, teams }) {
+  const dialog = useDialog();
+  const { isAdmin } = useAuth();
+  const [editingCell, setEditingCell] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedTeamId, setSelectedTeamId] = useState('all');
+
+  const teamById = useMemo(() => { const m = {}; teams.forEach(t => m[t.id] = t); return m; }, [teams]);
+  const stById = useMemo(() => { const m = {}; shiftTypes.forEach(st => m[st.id] = st); return m; }, [shiftTypes]);
+
+  const filteredStaff = useMemo(() => {
+    let list = staff;
+    if (selectedTeamId === 'none') list = list.filter(s => !s.teamId || !teamById[s.teamId]);
+    else if (selectedTeamId !== 'all') list = list.filter(s => s.teamId === selectedTeamId);
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(s => s.name.toLowerCase().includes(q) || (s.vehicle || '').toLowerCase().includes(q) || (s.area || '').toLowerCase().includes(q));
+    }
+    return list;
+  }, [staff, searchQuery, selectedTeamId, teamById]);
+
+  const dateObj = parseYmd(currentDate);
+  const dow = dateObj.getDay();
+
+  // シフト区分ごとにグルーピング
+  const grouped = useMemo(() => {
+    const byShiftType = {};
+    shiftTypes.forEach(st => { byShiftType[st.id] = []; });
+    const offList = [];
+    const reqOffList = [];
+    const fixedOffList = [];
+    const unassigned = [];
+
+    filteredStaff.forEach(s => {
+      const v = normalizeShift(shifts[`${currentDate}:${s.id}`]);
+      const isReq = (dayOff[s.id] || []).includes(currentDate);
+      if (v === 'reqoff' || isReq) reqOffList.push(s);
+      else if (v === 'off') {
+        if (isFixedDayOff(s, dow)) fixedOffList.push(s);
+        else offList.push(s);
+      }
+      else if (Array.isArray(v) && v.some(slot => slot && slot.shiftTypeId)) {
+        v.forEach(slot => {
+          if (slot && slot.shiftTypeId && byShiftType[slot.shiftTypeId]) {
+            byShiftType[slot.shiftTypeId].push({ staff: s, slot });
+          }
+        });
+      } else if (isFixedDayOff(s, dow)) fixedOffList.push(s);
+      else unassigned.push(s);
+    });
+
+    return { byShiftType, offList, reqOffList, fixedOffList, unassigned };
+  }, [filteredStaff, shifts, currentDate, dow, shiftTypes, dayOff]);
+
+  const handleCellClick = (s) => {
+    if (!isAdmin) return;
+    setEditingCell({ date: currentDate, staffId: s.id, staff: s });
+  };
+
+  const handleCellSave = async (date, staffId, value) => {
+    await setShifts(prev => {
+      const next = { ...prev };
+      const key = `${date}:${staffId}`;
+      if (value === null) delete next[key];
+      else next[key] = value;
+      return next;
+    });
+    setEditingCell(null);
+  };
+
+  const exportCSV = () => {
+    const header = ['シフト区分', '氏名', '班', '号車', 'コース'];
+    const rows = [];
+    shiftTypes.forEach(st => {
+      grouped.byShiftType[st.id].forEach(({ staff: s, slot }) => {
+        rows.push([st.name, s.name, teamById[s.teamId]?.name || '', s.vehicle || '', slot.area || s.area || '']);
+      });
+    });
+    grouped.reqOffList.forEach(s => rows.push(['希望休', s.name, teamById[s.teamId]?.name || '', s.vehicle || '', '']));
+    [...grouped.offList, ...grouped.fixedOffList].forEach(s => rows.push(['公休', s.name, teamById[s.teamId]?.name || '', s.vehicle || '', '']));
+    const csv = [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `hakoshift_${currentDate}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (staff.length === 0) {
+    return <div className="px-4"><EmptyState icon="Users" title="スタッフが未登録です" description={isAdmin ? 'メニュー → スタッフ から先にメンバーを登録してください。' : '管理者がスタッフを登録するまでお待ちください。'} /></div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <ShiftToolbar onExportCSV={exportCSV} searchQuery={searchQuery} setSearchQuery={setSearchQuery} isAdmin={isAdmin} hideMonthlyOps={true} />
+      {!isAdmin && (
+        <div className="mx-3 px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-xs text-zinc-400 flex items-center gap-2">
+          <Icon name="Eye" className="w-3.5 h-3.5" />閲覧モードです。編集には管理者ログインが必要です。
+        </div>
+      )}
+      <TeamFilter teams={teams} selectedTeamId={selectedTeamId} setSelectedTeamId={setSelectedTeamId} />
+
+      <div className="px-3">
+        <div className="bg-zinc-800/50 rounded-xl px-4 py-3 mb-3">
+          <div className="text-lg font-bold text-zinc-100">{dayLabel(currentDate)}</div>
+          <div className="text-xs text-zinc-400 mt-0.5">朝の点呼用一覧</div>
+        </div>
+
+        <div className="space-y-3">
+          {shiftTypes.map(st => {
+            const list = grouped.byShiftType[st.id];
+            if (list.length === 0) return null;
+            return (
+              <section key={st.id} className="bg-zinc-800 border border-zinc-700 rounded-xl overflow-hidden">
+                <div className="px-4 py-2.5 flex items-center gap-2" style={{ background: st.color + '22', borderLeft: `4px solid ${st.color}` }}>
+                  <Icon name="Clock" className="w-4 h-4" style={{ color: st.color }} />
+                  <div className="font-bold text-sm text-zinc-100">{st.name}</div>
+                  <div className="text-xs text-zinc-400">{st.time}</div>
+                  <div className="ml-auto text-xs font-bold text-zinc-300 bg-zinc-700/70 px-2 py-0.5 rounded-full">{list.length}名</div>
+                </div>
+                <div className="divide-y divide-zinc-700/50">
+                  {list.map(({ staff: s, slot }, i) => {
+                    const team = s.teamId && teamById[s.teamId];
+                    const area = slot.area || s.area || '';
+                    return (
+                      <button key={`${s.id}-${i}`} onClick={() => handleCellClick(s)} disabled={!isAdmin}
+                        className={`w-full px-4 py-2.5 flex items-center gap-3 transition-colors text-left ${isAdmin ? 'hover:bg-zinc-700/40' : ''}`}>
+                        {team && <span className="w-1 h-8 rounded-full flex-shrink-0" style={{ background: team.color }}></span>}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-sm text-zinc-100">{s.name}</span>
+                            {s.role && <span className="text-[10px] px-1.5 py-0.5 bg-zinc-700 text-zinc-300 rounded">{s.role}</span>}
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-zinc-400 mt-0.5">
+                            {s.vehicle && <span className="flex items-center gap-1"><Icon name="Truck" className="w-3 h-3 text-amber-500" />{s.vehicle}</span>}
+                            {area && <span className="flex items-center gap-1"><Icon name="MapPin" className="w-3 h-3 text-rose-400" />{area}</span>}
+                            {team && <span className="text-zinc-500">{team.name}</span>}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
+
+          {grouped.reqOffList.length > 0 && (
+            <section className="bg-red-950/20 border border-red-800/40 rounded-xl overflow-hidden">
+              <div className="px-4 py-2.5 flex items-center gap-2 bg-red-500/10 border-l-4 border-red-500">
+                <Icon name="CalendarOff" className="w-4 h-4 text-red-400" />
+                <div className="font-bold text-sm text-red-300">希望休</div>
+                <div className="ml-auto text-xs font-bold text-red-300 bg-red-500/20 px-2 py-0.5 rounded-full">{grouped.reqOffList.length}名</div>
+              </div>
+              <div className="px-4 py-3 flex flex-wrap gap-2">
+                {grouped.reqOffList.map(s => (
+                  <button key={s.id} onClick={() => handleCellClick(s)} disabled={!isAdmin}
+                    className="text-sm px-3 py-1.5 bg-red-900/30 text-red-200 rounded-lg hover:bg-red-900/50 transition-colors">
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {(grouped.offList.length + grouped.fixedOffList.length > 0) && (
+            <section className="bg-zinc-800 border border-zinc-700 rounded-xl overflow-hidden">
+              <div className="px-4 py-2.5 flex items-center gap-2 bg-zinc-700/30 border-l-4 border-zinc-500">
+                <Icon name="CalendarOff" className="w-4 h-4 text-zinc-400" />
+                <div className="font-bold text-sm text-zinc-200">公休</div>
+                <div className="ml-auto text-xs font-bold text-zinc-300 bg-zinc-700 px-2 py-0.5 rounded-full">{grouped.offList.length + grouped.fixedOffList.length}名</div>
+              </div>
+              <div className="px-4 py-3 flex flex-wrap gap-2">
+                {[...grouped.offList, ...grouped.fixedOffList].map(s => {
+                  const isFixed = grouped.fixedOffList.includes(s);
+                  return (
+                    <button key={s.id} onClick={() => handleCellClick(s)} disabled={!isAdmin}
+                      className={`text-sm px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 ${
+                        isFixed ? 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700' : 'bg-zinc-700 text-zinc-200 hover:bg-zinc-600'
+                      }`}>
+                      {isFixed && <Icon name="Repeat" className="w-3 h-3" />}{s.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {grouped.unassigned.length > 0 && (
+            <section className="bg-zinc-800/50 border border-dashed border-zinc-700 rounded-xl overflow-hidden">
+              <div className="px-4 py-2.5 flex items-center gap-2">
+                <Icon name="HelpCircle" className="w-4 h-4 text-zinc-500" />
+                <div className="font-bold text-sm text-zinc-400">未割当</div>
+                <div className="ml-auto text-xs font-bold text-zinc-400 bg-zinc-700/50 px-2 py-0.5 rounded-full">{grouped.unassigned.length}名</div>
+              </div>
+              <div className="px-4 py-3 flex flex-wrap gap-2">
+                {grouped.unassigned.map(s => (
+                  <button key={s.id} onClick={() => handleCellClick(s)} disabled={!isAdmin}
+                    className="text-sm px-3 py-1.5 bg-zinc-800 text-zinc-300 border border-dashed border-zinc-600 rounded-lg hover:bg-zinc-700 transition-colors">
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      </div>
+
+      {editingCell && isAdmin && (
+        <CellEditModal editingCell={editingCell} shiftTypes={shiftTypes}
+          currentValue={normalizeShift(shifts[`${editingCell.date}:${editingCell.staffId}`])}
+          isReqOff={(dayOff[editingCell.staffId] || []).includes(editingCell.date)}
+          areas={areas} setAreas={setAreas} onSave={handleCellSave} onClose={() => setEditingCell(null)} allStaff={staff} allShifts={shifts} />
+      )}
+    </div>
+  );
+}
+
+// ========== 週表示 ==========
+function ShiftWeekView({ currentWeekStart, staff, shiftTypes, dayOff, shifts, setShifts, areas, setAreas, aiSettings, teams }) {
+  const dialog = useDialog();
+  const { isAdmin } = useAuth();
+  const [editingCell, setEditingCell] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedTeamId, setSelectedTeamId] = useState('all');
+
+  const weekDays = useMemo(() => getWeekDays(parseYmd(currentWeekStart)), [currentWeekStart]);
+  const teamById = useMemo(() => { const m = {}; teams.forEach(t => m[t.id] = t); return m; }, [teams]);
+  const stById = useMemo(() => { const m = {}; shiftTypes.forEach(st => m[st.id] = st); return m; }, [shiftTypes]);
+
+  const filteredStaff = useMemo(() => {
+    let list = staff;
+    if (selectedTeamId === 'none') list = list.filter(s => !s.teamId || !teamById[s.teamId]);
+    else if (selectedTeamId !== 'all') list = list.filter(s => s.teamId === selectedTeamId);
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(s => s.name.toLowerCase().includes(q) || (s.vehicle || '').toLowerCase().includes(q) || (s.area || '').toLowerCase().includes(q));
+    }
+    return list;
+  }, [staff, searchQuery, selectedTeamId, teamById]);
+
+  const groupedStaff = useMemo(() => {
+    const groups = [];
+    teams.forEach(t => {
+      const members = filteredStaff.filter(s => s.teamId === t.id);
+      if (members.length > 0) groups.push({ team: t, members });
+    });
+    const unassigned = filteredStaff.filter(s => !s.teamId || !teamById[s.teamId]);
+    if (unassigned.length > 0) groups.push({ team: null, members: unassigned });
+    return groups;
+  }, [filteredStaff, teams, teamById]);
+
+  const isDayOff = useCallback((sid, date) => (dayOff[sid] || []).includes(date), [dayOff]);
+
+  const handleCellClick = (s, d) => {
+    if (!isAdmin) return;
+    setEditingCell({ date: d.date, staffId: s.id, staff: s });
+  };
+
+  const handleCellSave = async (date, staffId, value) => {
+    await setShifts(prev => {
+      const next = { ...prev };
+      const key = `${date}:${staffId}`;
+      if (value === null) delete next[key];
+      else next[key] = value;
+      return next;
+    });
+    setEditingCell(null);
+  };
+
+  const exportCSV = () => {
+    const header = ['氏名', '班', ...weekDays.map(d => `${d.month}/${d.day}(${DOW[d.dow]})`)];
+    const rows = filteredStaff.map(s => {
+      const cells = weekDays.map(d => {
+        const v = normalizeShift(shifts[`${d.date}:${s.id}`]);
+        if (v === 'reqoff') return '希望休';
+        if (v === 'off') return '公休';
+        if (Array.isArray(v)) {
+          return v.filter(slot => slot && slot.shiftTypeId).map(slot => stById[slot.shiftTypeId]?.name || '').join(' / ');
+        }
+        return '';
+      });
+      return [s.name, teamById[s.teamId]?.name || '', ...cells];
+    });
+    const csv = [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `hakoshift_week_${currentWeekStart}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (staff.length === 0) {
+    return <div className="px-4"><EmptyState icon="Users" title="スタッフが未登録です" description={isAdmin ? 'メニュー → スタッフ から先にメンバーを登録してください。' : '管理者がスタッフを登録するまでお待ちください。'} /></div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <ShiftToolbar onExportCSV={exportCSV} searchQuery={searchQuery} setSearchQuery={setSearchQuery} isAdmin={isAdmin} hideMonthlyOps={true} />
+      {!isAdmin && (
+        <div className="mx-3 px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-xs text-zinc-400 flex items-center gap-2">
+          <Icon name="Eye" className="w-3.5 h-3.5" />閲覧モードです。編集には管理者ログインが必要です。
+        </div>
+      )}
+      <TeamFilter teams={teams} selectedTeamId={selectedTeamId} setSelectedTeamId={setSelectedTeamId} />
+
+      <div className="px-3">
+        <div className="text-sm font-medium text-zinc-300 mb-2">{weekLabel(parseYmd(currentWeekStart))}</div>
+      </div>
+
+      <div className="overflow-x-auto bg-zinc-900 border-y border-zinc-800">
+        <table className="border-collapse w-full" style={{ minWidth: '100%' }}>
+          <thead>
+            <tr>
+              <th className="sticky left-0 z-10 bg-zinc-900 border-b border-r border-zinc-800 px-3 py-2 text-left text-xs font-medium text-zinc-400 min-w-[140px]">スタッフ</th>
+              {weekDays.map(d => (
+                <th key={d.date} className="border-b border-zinc-800 px-1 py-2 font-normal min-w-[100px]"
+                  style={{ color: d.dow === 0 ? '#f87171' : d.dow === 6 ? '#60a5fa' : '#a1a1aa' }}>
+                  <div className="text-[10px] uppercase tracking-wider opacity-70">{DOW[d.dow]}</div>
+                  <div className="text-base font-normal">{d.month}/{d.day}</div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {groupedStaff.map((group, gi) => (
+              <Fragment key={group.team?.id || `unassigned-${gi}`}>
+                <tr>
+                  <td colSpan={8} className="sticky left-0 z-[5] bg-zinc-800/80 border-y border-zinc-700 px-3 py-1.5"
+                    style={group.team ? { borderLeftWidth: '3px', borderLeftColor: group.team.color, borderLeftStyle: 'solid' } : {}}>
+                    <div className="flex items-center gap-2">
+                      {group.team ? (
+                        <Fragment>
+                          <span className="w-2.5 h-2.5 rounded-full" style={{ background: group.team.color }}></span>
+                          <span className="text-xs font-bold text-zinc-100">{group.team.name}</span>
+                        </Fragment>
+                      ) : (
+                        <Fragment>
+                          <Icon name="UsersRound" className="w-3 h-3 text-zinc-500" />
+                          <span className="text-xs font-bold text-zinc-400">未所属</span>
+                        </Fragment>
+                      )}
+                      <span className="text-[10px] text-zinc-500">{group.members.length}名</span>
+                    </div>
+                  </td>
+                </tr>
+                {group.members.map(s => {
+                  const team = group.team;
+                  return (
+                    <tr key={s.id} className="border-b border-zinc-800/50">
+                      <td className="sticky left-0 z-10 bg-zinc-900 border-r border-zinc-800 px-3 py-2 align-top"
+                        style={team ? { borderLeftWidth: '3px', borderLeftColor: team.color, borderLeftStyle: 'solid' } : {}}>
+                        <div className="font-medium text-sm text-zinc-100 truncate">{s.name}</div>
+                        {s.vehicle && <div className="flex items-center gap-1 text-[10px] text-amber-500/90 mt-0.5"><Icon name="Truck" className="w-2.5 h-2.5" /><span className="truncate">{s.vehicle}</span></div>}
+                        {s.area && <div className="flex items-center gap-1 text-[10px] text-zinc-500"><Icon name="MapPin" className="w-2.5 h-2.5" /><span className="truncate">{s.area}</span></div>}
+                      </td>
+                      {weekDays.map(d => {
+                        const v = normalizeShift(shifts[`${d.date}:${s.id}`]);
+                        const isReq = isDayOff(s.id, d.date);
+                        const isFixed = isFixedDayOff(s, d.dow);
+                        const bg = d.dow === 0 ? 'bg-red-950/10' : d.dow === 6 ? 'bg-blue-950/10' : '';
+                        return (
+                          <td key={d.date}
+                            className={`border-r border-zinc-800/50 align-top p-1 transition-colors ${bg} ${isAdmin ? 'cursor-pointer hover:bg-zinc-800/40' : ''}`}
+                            style={{ minHeight: '60px', height: '60px' }}
+                            onClick={() => handleCellClick(s, d)}>
+                            <CellContent value={v} stById={stById} staffArea={s.area} isReqOff={isReq} isFixedOff={isFixed} />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {editingCell && isAdmin && (
+        <CellEditModal editingCell={editingCell} shiftTypes={shiftTypes}
+          currentValue={normalizeShift(shifts[`${editingCell.date}:${editingCell.staffId}`])}
+          isReqOff={isDayOff(editingCell.staffId, editingCell.date)}
+          areas={areas} setAreas={setAreas} onSave={handleCellSave} onClose={() => setEditingCell(null)} allStaff={staff} allShifts={shifts} />
+      )}
+    </div>
+  );
+}
+
+// ========== 月表示 ==========
+function ShiftMonthView({ currentMonth, days, staff, shiftTypes, dayOff, shifts, setShifts, areas, setAreas, aiSettings, teams }) {
+  const dialog = useDialog();
+  const { isAdmin } = useAuth();
+  const [editingCell, setEditingCell] = useState(null);
+  const [generating, setGenerating] = useState(false);
+  const [previewing, setPreviewing] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedTeamId, setSelectedTeamId] = useState('all');
+
+  const teamById = useMemo(() => { const m = {}; teams.forEach(t => m[t.id] = t); return m; }, [teams]);
+  const stById = useMemo(() => { const m = {}; shiftTypes.forEach(st => m[st.id] = st); return m; }, [shiftTypes]);
+
+  const filteredStaff = useMemo(() => {
+    let list = staff;
+    if (selectedTeamId === 'none') list = list.filter(s => !s.teamId || !teamById[s.teamId]);
+    else if (selectedTeamId !== 'all') list = list.filter(s => s.teamId === selectedTeamId);
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(s => s.name.toLowerCase().includes(q) || (s.vehicle || '').toLowerCase().includes(q) || (s.area || '').toLowerCase().includes(q) || (s.role || '').toLowerCase().includes(q));
+    }
+    return list;
+  }, [staff, searchQuery, selectedTeamId, teamById]);
+
+  const groupedStaff = useMemo(() => {
+    const groups = [];
+    teams.forEach(t => {
+      const members = filteredStaff.filter(s => s.teamId === t.id);
+      if (members.length > 0) groups.push({ team: t, members });
+    });
+    const unassigned = filteredStaff.filter(s => !s.teamId || !teamById[s.teamId]);
+    if (unassigned.length > 0) groups.push({ team: null, members: unassigned });
+    return groups;
+  }, [filteredStaff, teams, teamById]);
+
+  const isDayOff = useCallback((sid, date) => (dayOff[sid] || []).includes(date), [dayOff]);
+  const getCellValue = useCallback((date, sid) => normalizeShift(shifts[`${date}:${sid}`]), [shifts]);
+
+  const consecutiveAlerts = useMemo(() => calcConsecutiveAlerts(staff, days, shifts, dayOff, aiSettings.warnConsecutiveDays || CONSECUTIVE_WORK_LIMIT), [staff, days, shifts, dayOff, aiSettings.warnConsecutiveDays]);
+  const vehicleOverlaps = useMemo(() => calcVehicleOverlapAlerts(staff, days, shifts), [staff, days, shifts]);
+  const areaOverlaps = useMemo(() => calcAreaOverlapAlerts(staff, days, shifts), [staff, days, shifts]);
+
+  const totalConsCount = useMemo(() => Object.values(consecutiveAlerts).reduce((sum, set) => sum + (set.size > 0 ? 1 : 0), 0), [consecutiveAlerts]);
+  const totalVOverlap = useMemo(() => Object.keys(vehicleOverlaps).length, [vehicleOverlaps]);
+  const totalAOverlap = useMemo(() => Object.keys(areaOverlaps).length, [areaOverlaps]);
+
+  const handleAutoGen = async () => {
+    if (staff.length === 0) { await dialog.alert({ message: 'まずスタッフを登録してください' }); return; }
+    setGenerating(true);
+    await new Promise(r => setTimeout(r, 400));
+    const generated = generateShifts(staff, days, dayOff, shiftTypes, aiSettings);
+    setGenerating(false);
+    setPreviewing(generated);
+  };
+
+  const handleApply = async () => {
+    if (previewing) { await setShifts(previewing); setPreviewing(null); }
+  };
+
+  const handleClearMonth = async () => {
+    const ok = await dialog.confirm({ title: '月次クリア', message: `${monthLabel(currentMonth)}のシフトをすべて削除します。\nこの操作は取り消せません。`, confirmText: 'すべて削除' });
+    if (!ok) return;
+    await setShifts({});
+  };
+
+  const handleCellSave = async (date, staffId, value) => {
+    await setShifts(prev => {
+      const next = { ...prev };
+      const key = `${date}:${staffId}`;
+      if (value === null) delete next[key];
+      else next[key] = value;
+      return next;
+    });
+    setEditingCell(null);
+  };
+
+  const handleCellClick = (s, d) => {
+    if (!isAdmin) return;
+    setEditingCell({ date: d.date, staffId: s.id, staff: s });
+  };
+
+  const exportCSV = () => {
+    const header = ['氏名', '班', '役職', '号車', 'デフォルトコース', '固定休み', ...days.map(d => `${d.day}(${DOW[d.dow]})`)];
+    const rows = staff.map(s => {
+      const teamName = teamById[s.teamId]?.name || '';
+      const fixedOffStr = (s.fixedDayOff || []).map(dow => DOW[dow]).join('・');
+      const cells = days.map(d => {
+        const v = getCellValue(d.date, s.id);
+        if (v === 'reqoff') return '希望休';
+        if (v === 'off') return isDayOff(s.id, d.date) ? '希望休' : '公休';
+        if (Array.isArray(v)) return v.filter(slot => slot && slot.shiftTypeId).map(slot => {
+          const stName = stById[slot.shiftTypeId]?.name || '';
+          return slot.area ? `${stName}(${slot.area})` : stName;
+        }).join(' / ');
+        return '';
+      });
+      return [s.name, teamName, s.role || '', s.vehicle || '', s.area || '', fixedOffStr, ...cells];
+    });
+    const csv = [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `hakoshift_${currentMonth}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (staff.length === 0) {
+    return <div className="px-4"><EmptyState icon="Users" title="スタッフが未登録です" description={isAdmin ? 'メニュー → スタッフ から先にメンバーを登録してください。' : '管理者がスタッフを登録するまでお待ちください。'} /></div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <ShiftToolbar onAutoGen={handleAutoGen} generating={generating} onClearMonth={handleClearMonth}
+        onExportCSV={exportCSV} searchQuery={searchQuery} setSearchQuery={setSearchQuery} isAdmin={isAdmin} />
+      {!isAdmin && (
+        <div className="mx-3 px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-xs text-zinc-400 flex items-center gap-2">
+          <Icon name="Eye" className="w-3.5 h-3.5" />閲覧モードです。編集には管理者ログインが必要です。
+        </div>
+      )}
+      <TeamFilter teams={teams} selectedTeamId={selectedTeamId} setSelectedTeamId={setSelectedTeamId} />
+
+      {(totalConsCount > 0 || totalVOverlap > 0 || totalAOverlap > 0) && (
+        <div className="mx-3 px-3 py-2 bg-amber-500/10 border border-amber-500/30 rounded-lg flex flex-wrap gap-3 text-xs">
+          {totalConsCount > 0 && <div className="flex items-center gap-1.5 text-amber-300"><Icon name="AlertTriangle" className="w-3.5 h-3.5" /><span><strong>{totalConsCount}名</strong>が{aiSettings.warnConsecutiveDays || CONSECUTIVE_WORK_LIMIT}連勤以上</span></div>}
+          {totalVOverlap > 0 && <div className="flex items-center gap-1.5 text-orange-300"><Icon name="AlertTriangle" className="w-3.5 h-3.5" /><span><strong>{totalVOverlap}件</strong>の号車被り</span></div>}
+          {totalAOverlap > 0 && <div className="flex items-center gap-1.5 text-yellow-300"><Icon name="AlertTriangle" className="w-3.5 h-3.5" /><span><strong>{totalAOverlap}件</strong>のコース被り</span></div>}
+        </div>
+      )}
+
+      <div className="overflow-x-auto bg-zinc-900 border-y border-zinc-800">
+        <table className="border-collapse" style={{ minWidth: '100%' }}>
+          <thead>
+            <tr>
+              <th className="sticky left-0 z-10 bg-zinc-900 border-b border-r border-zinc-800 px-3 py-2 text-left text-xs font-medium text-zinc-400 min-w-[160px] w-[160px]">スタッフ</th>
+              {days.map(d => (
+                <th key={d.date} className="border-b border-zinc-800 px-1 py-2 font-normal min-w-[110px]"
+                  style={{ color: d.dow === 0 ? '#f87171' : d.dow === 6 ? '#60a5fa' : '#a1a1aa' }}>
+                  <div className="text-[10px] uppercase tracking-wider opacity-70">{DOW[d.dow]}</div>
+                  <div className="text-lg font-normal">{d.day}</div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {groupedStaff.map((group, gi) => (
+              <Fragment key={group.team?.id || `unassigned-${gi}`}>
+                <tr>
+                  <td colSpan={days.length + 1} className="sticky left-0 z-[5] bg-zinc-800/80 border-y border-zinc-700 px-3 py-1.5"
+                    style={group.team ? { borderLeftWidth: '3px', borderLeftColor: group.team.color, borderLeftStyle: 'solid' } : {}}>
+                    <div className="flex items-center gap-2">
+                      {group.team ? (<><span className="w-2.5 h-2.5 rounded-full" style={{ background: group.team.color }}></span><span className="text-xs font-bold text-zinc-100">{group.team.name}</span></>) : (<><Icon name="UsersRound" className="w-3 h-3 text-zinc-500" /><span className="text-xs font-bold text-zinc-400">未所属</span></>)}
+                      <span className="text-[10px] text-zinc-500">{group.members.length}名</span>
+                    </div>
+                  </td>
+                </tr>
+                {group.members.map(s => {
+                  const hasAlert = consecutiveAlerts[s.id]?.size > 0;
+                  // この人にコース被りが何件あるか集計
+                  const overlapCount = days.reduce((cnt, d) => {
+                    return cnt + ((areaOverlaps[`${d.date}:${s.id}`] || vehicleOverlaps[`${d.date}:${s.id}`]) ? 1 : 0);
+                  }, 0);
+                  const fixedOffs = s.fixedDayOff || [];
+                  const team = group.team;
+                  return (
+                    <tr key={s.id} className="border-b border-zinc-800/50">
+                      <td className="sticky left-0 z-10 bg-zinc-900 border-r border-zinc-800 px-3 py-2 align-top"
+                        style={team ? { borderLeftWidth: '3px', borderLeftColor: team.color, borderLeftStyle: 'solid' } : {}}>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {team && <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: team.color }}></span>}
+                          {hasAlert && <span title="連勤アラート"><Icon name="AlertTriangle" className="w-3 h-3 text-amber-400 flex-shrink-0" /></span>}
+                          {overlapCount > 0 && (
+                            <span title="コース・号車被り" className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-yellow-500/20 text-yellow-300 rounded text-[9px] font-bold">
+                              <Icon name="AlertTriangle" className="w-2.5 h-2.5" />{overlapCount}
+                            </span>
+                          )}
+                          <div className="font-medium text-sm text-zinc-100 truncate">{s.name}</div>
+                        </div>
+                        <div className="mt-1 space-y-0.5">
+                          {s.role && <div className="text-[10px] text-zinc-500 truncate">{s.role}</div>}
+                          {s.vehicle && <div className="flex items-center gap-1 text-[10px] text-amber-500/90"><Icon name="Truck" className="w-2.5 h-2.5" /><span className="truncate">{s.vehicle}</span></div>}
+                          {s.area && <div className="flex items-center gap-1 text-[10px] text-zinc-500"><Icon name="MapPin" className="w-2.5 h-2.5" /><span className="truncate">{s.area}</span></div>}
+                          {fixedOffs.length > 0 && <div className="flex items-center gap-1 text-[10px] text-zinc-500"><Icon name="Repeat" className="w-2.5 h-2.5" /><span className="truncate">{fixedOffs.map(dow => DOW[dow]).join('・')}休</span></div>}
+                        </div>
+                      </td>
+                      {days.map(d => {
+                        const v = getCellValue(d.date, s.id);
+                        const isReq = isDayOff(s.id, d.date);
+                        const isFixed = isFixedDayOff(s, d.dow);
+                        const bg = d.dow === 0 ? 'bg-red-950/10' : d.dow === 6 ? 'bg-blue-950/10' : '';
+                        const isCons = consecutiveAlerts[s.id]?.has(d.date);
+                        const isVO = vehicleOverlaps[`${d.date}:${s.id}`];
+                        const isAO = areaOverlaps[`${d.date}:${s.id}`];
+                        let alertCls = '';
+                        if (isVO && isAO) alertCls = 'ring-2 ring-red-500 ring-inset bg-gradient-to-br from-orange-500/30 to-yellow-500/30';
+                        else if (isVO) alertCls = 'ring-2 ring-orange-500 ring-inset bg-orange-500/20';
+                        else if (isAO) alertCls = 'ring-2 ring-yellow-400 ring-inset bg-yellow-500/20';
+                        else if (isCons) alertCls = 'ring-2 ring-amber-500/60 ring-inset';
+                        return (
+                          <td key={d.date}
+                            className={`border-r border-zinc-800/50 align-top p-1 transition-colors ${alertCls || bg} ${isAdmin ? 'cursor-pointer hover:bg-zinc-800/40' : ''}`}
+                            style={{ minHeight: '64px', height: '64px' }}
+                            onClick={() => handleCellClick(s, d)}>
+                            <CellContent value={v} stById={stById} staffArea={s.area} isReqOff={isReq} isFixedOff={isFixed} hasOverlapAlert={isVO || isAO} />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="text-xs text-zinc-500 text-center px-4 flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+        {isAdmin && <span>セルをタップで編集</span>}
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-orange-500/20 text-orange-300 rounded"><span>⚠</span>号車被り</span>
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-yellow-500/20 text-yellow-300 rounded"><span>⚠</span>コース被り</span>
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-500/10 text-amber-400 rounded"><span>⚠</span>連勤</span>
+      </p>
+
+      {editingCell && isAdmin && (
+        <CellEditModal editingCell={editingCell} shiftTypes={shiftTypes}
+          currentValue={getCellValue(editingCell.date, editingCell.staffId)}
+          isReqOff={isDayOff(editingCell.staffId, editingCell.date)}
+          areas={areas} setAreas={setAreas} onSave={handleCellSave} onClose={() => setEditingCell(null)} allStaff={staff} allShifts={shifts} />
+      )}
+      {previewing && isAdmin && (
+        <GenerationPreviewModal currentShifts={shifts} previewShifts={previewing}
+          staff={staff} days={days} dayOff={dayOff} shiftTypes={shiftTypes} aiSettings={aiSettings}
+          onApply={handleApply} onCancel={() => setPreviewing(null)} />
+      )}
+    </div>
+  );
+}
+
+// ========== セル内表示 ==========
+function CellContent({ value, stById, staffArea, isReqOff, isFixedOff, hasOverlapAlert }) {
+  if (value === 'reqoff' || (isReqOff && (!value || value === 'off'))) {
+    return <div className="w-full h-full flex items-center justify-center bg-red-500 rounded text-white text-[11px] font-semibold">希望休</div>;
+  }
+  if (value === 'off') {
+    return <div className="w-full h-full flex items-center justify-center bg-zinc-700 border border-zinc-600 rounded text-zinc-300 text-[11px] font-medium gap-0.5">{isFixedOff && <Icon name="Repeat" className="w-2.5 h-2.5" />}公休</div>;
+  }
+  if (!value && isFixedOff) {
+    return <div className="w-full h-full flex items-center justify-center bg-zinc-800/60 border border-dashed border-zinc-600 rounded text-zinc-500 text-[11px] gap-0.5"><Icon name="Repeat" className="w-2.5 h-2.5" />公休</div>;
+  }
+  if (!value) return null;
+  if (Array.isArray(value)) {
+    const slots = value.filter(slot => slot && slot.shiftTypeId);
+    if (slots.length === 0) return null;
+    return (
+      <div className={`w-full h-full flex flex-col gap-0.5 ${isReqOff ? 'ring-2 ring-red-500 ring-inset rounded' : ''} relative`}>
+        {hasOverlapAlert && (
+          <div className="absolute -top-1 -right-1 z-20 w-4 h-4 bg-yellow-400 rounded-full flex items-center justify-center shadow-lg">
+            <Icon name="AlertTriangle" className="w-2.5 h-2.5 text-yellow-900" />
+          </div>
+        )}
+        {slots.map((slot, i) => {
+          const st = stById[slot.shiftTypeId];
+          if (!st) return null;
+          const showArea = slot.area || (slots.length === 1 && staffArea);
+          const areaText = slot.area || staffArea || '';
+          const isCustom = slot.area && slot.area !== staffArea;
+          return (
+            <div key={i} className="flex-1 px-1.5 py-0.5 rounded text-white overflow-hidden" style={{ background: st.color, minHeight: '20px' }}>
+              <div className="text-[11px] font-semibold leading-tight truncate">{st.name}</div>
+              {slots.length === 1 && <div className="text-[9px] opacity-90 leading-tight truncate">{st.time}</div>}
+              {showArea && <div className={`text-[9px] leading-tight truncate ${isCustom ? 'font-bold' : 'opacity-80'}`}>{isCustom ? '★' : ''}{areaText}</div>}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+  return null;
+}
+
+// ========== セル編集モーダル ==========
+function CellEditModal({ editingCell, shiftTypes, currentValue, isReqOff, areas, setAreas, onSave, onClose, allStaff, allShifts }) {
+  const dialog = useDialog();
+  const [, m, d] = editingCell.date.split('-');
+  const dateLabel = `${parseInt(m)}月${parseInt(d)}日`;
+  const dow = parseYmd(editingCell.date).getDay();
+  const isFixedOff = isFixedDayOff(editingCell.staff, dow);
+  const stById = useMemo(() => { const map = {}; shiftTypes.forEach(st => map[st.id] = st); return map; }, [shiftTypes]);
+
+  const initial = useMemo(() => {
+    if (currentValue === 'reqoff') return { mode: 'reqoff', slots: [null, null] };
+    if (currentValue === 'off') return { mode: 'off', slots: [null, null] };
+    if (Array.isArray(currentValue)) return { mode: 'work', slots: [currentValue[0] || null, currentValue[1] || null] };
+    return { mode: 'empty', slots: [null, null] };
+  }, [currentValue]);
+  const [mode, setMode] = useState(initial.mode);
+  const [slots, setSlots] = useState(initial.slots);
+
+  const handleSelect = (i, stId) => {
+    setMode('work');
+    const next = [...slots];
+    if (next[i] && next[i].shiftTypeId === stId) next[i] = null;
+    else next[i] = { shiftTypeId: stId, area: next[i]?.area || '' };
+    setSlots(next);
+  };
+  const handleAreaChange = (i, area) => {
+    const next = [...slots];
+    if (next[i]) { next[i] = { ...next[i], area }; setSlots(next); }
+  };
+  // 被り検知: 同日・同シフト区分・同コース or 同号車のスタッフを抽出
+  const detectOverlaps = () => {
+    if (mode !== 'work' || !allStaff || !allShifts) return [];
+    const myStaff = editingCell.staff;
+    const myArea = myStaff.area || '';
+    const myVehicle = myStaff.vehicle || '';
+    const overlaps = [];
+    slots.forEach((slot, slotIdx) => {
+      if (!slot || !slot.shiftTypeId) return;
+      const useArea = slot.area || myArea;
+      allStaff.forEach(other => {
+        if (other.id === editingCell.staffId) return;
+        const otherV = normalizeShift(allShifts[`${editingCell.date}:${other.id}`]);
+        if (!Array.isArray(otherV)) return;
+        otherV.forEach(otherSlot => {
+          if (!otherSlot || !otherSlot.shiftTypeId) return;
+          if (otherSlot.shiftTypeId !== slot.shiftTypeId) return;
+          const otherArea = otherSlot.area || other.area || '';
+          const otherVehicle = other.vehicle || '';
+          // コース被り
+          if (useArea && otherArea && useArea === otherArea) {
+            overlaps.push({ type: 'course', staff: other, value: useArea, shiftTypeName: stById[slot.shiftTypeId]?.name || '' });
+          }
+          // 号車被り
+          if (myVehicle && otherVehicle && myVehicle === otherVehicle) {
+            overlaps.push({ type: 'vehicle', staff: other, value: myVehicle, shiftTypeName: stById[slot.shiftTypeId]?.name || '' });
+          }
+        });
+      });
+    });
+    return overlaps;
+  };
+
+  const performSave = async () => {
+    const newAreas = [...areas];
+    slots.forEach(slot => { if (slot?.area && !newAreas.includes(slot.area)) newAreas.push(slot.area); });
+    if (newAreas.length !== areas.length) await setAreas(newAreas);
+    if (mode === 'reqoff') onSave(editingCell.date, editingCell.staffId, 'reqoff');
+    else if (mode === 'off') onSave(editingCell.date, editingCell.staffId, 'off');
+    else if (!slots[0] && !slots[1]) onSave(editingCell.date, editingCell.staffId, null);
+    else onSave(editingCell.date, editingCell.staffId, slots);
+  };
+
+  const handleSave = async () => {
+    const overlaps = detectOverlaps();
+    if (overlaps.length > 0) {
+      // 重複を整形してメッセージ作成
+      const courseList = overlaps.filter(o => o.type === 'course');
+      const vehicleList = overlaps.filter(o => o.type === 'vehicle');
+      let msg = '⚠️ 被りが検出されました\n\n';
+      if (courseList.length > 0) {
+        msg += '【コース被り】\n';
+        courseList.forEach(o => {
+          msg += `・${o.shiftTypeName} で「${o.value}」が ${o.staff.name} さんと重複\n`;
+        });
+        msg += '\n';
+      }
+      if (vehicleList.length > 0) {
+        msg += '【号車被り】\n';
+        vehicleList.forEach(o => {
+          msg += `・${o.shiftTypeName} で「${o.value}」が ${o.staff.name} さんと重複\n`;
+        });
+        msg += '\n';
+      }
+      msg += 'このまま保存しますか？';
+      const ok = await dialog.confirm({
+        title: '被り確認',
+        message: msg,
+        confirmText: 'このまま保存',
+        cancelText: '修正する',
+        danger: false,
+      });
+      if (!ok) return;
+    }
+    await performSave();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-zinc-800 border border-zinc-700 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-zinc-700">
+          <div>
+            <div className="text-xs text-zinc-400 flex items-center gap-2 flex-wrap">
+              {dateLabel}
+              {isReqOff && <span className="px-1.5 py-0.5 bg-red-500/20 text-red-300 rounded text-[10px] font-semibold">希望休</span>}
+              {isFixedOff && <span className="px-1.5 py-0.5 bg-zinc-700 text-zinc-300 rounded text-[10px] font-semibold flex items-center gap-0.5"><Icon name="Repeat" className="w-2.5 h-2.5" />固定休み</span>}
+            </div>
+            <div className="font-semibold text-zinc-100">{editingCell.staff.name}</div>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-zinc-700 rounded-lg"><Icon name="X" className="w-5 h-5 text-zinc-300" /></button>
+        </div>
+        <div className="p-4 space-y-3 overflow-y-auto">
+          <div>
+            <div className="text-xs font-semibold text-zinc-400 mb-2">休み</div>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => setMode(mode === 'reqoff' ? 'empty' : 'reqoff')}
+                className={`p-3 rounded-lg border text-left ${mode === 'reqoff' ? 'border-red-400 bg-red-500/15' : 'border-zinc-700 hover:bg-zinc-700/50'}`}>
+                <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm bg-red-500"></span><span className="text-sm font-medium text-zinc-100">希望休</span>{mode === 'reqoff' && <Icon name="Check" className="w-4 h-4 text-red-400 ml-auto" />}</div>
+                <div className="text-[10px] text-zinc-500 mt-0.5">本人希望の休み</div>
+              </button>
+              <button onClick={() => setMode(mode === 'off' ? 'empty' : 'off')}
+                className={`p-3 rounded-lg border text-left ${mode === 'off' ? 'border-zinc-400 bg-zinc-700' : 'border-zinc-700 hover:bg-zinc-700/50'}`}>
+                <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm bg-zinc-600 border border-zinc-500"></span><span className="text-sm font-medium text-zinc-100">公休</span>{mode === 'off' && <Icon name="Check" className="w-4 h-4 text-zinc-300 ml-auto" />}</div>
+                <div className="text-[10px] text-zinc-500 mt-0.5">通常の休み</div>
+              </button>
+            </div>
+          </div>
+          <div className="text-center text-xs text-zinc-500">または</div>
+          {[0, 1].map(i => (
+            <SlotEditor key={i} slotIdx={i} slot={slots[i]} shiftTypes={shiftTypes} areas={areas}
+              disabled={mode === 'off' || mode === 'reqoff'}
+              onSelectShiftType={handleSelect} onAreaChange={handleAreaChange}
+              onClear={() => { const next = [...slots]; next[i] = null; setSlots(next); }}
+              defaultArea={editingCell.staff.area} />
+          ))}
+        </div>
+        <div className="p-4 border-t border-zinc-700 flex gap-2">
+          <button onClick={() => onSave(editingCell.date, editingCell.staffId, null)} className="px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-700 rounded-lg">すべてクリア</button>
+          <div className="flex-1"></div>
+          <button onClick={onClose} className="px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-700 rounded-lg">キャンセル</button>
+          <button onClick={handleSave} className="px-4 py-2 bg-amber-600 text-white text-sm font-semibold rounded-lg hover:bg-amber-700">保存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SlotEditor({ slotIdx, slot, shiftTypes, areas, disabled, onSelectShiftType, onAreaChange, onClear, defaultArea }) {
+  return (
+    <div>
+      <div className="text-xs font-semibold text-zinc-400 mb-2 flex items-center gap-2">
+        <span className="w-5 h-5 inline-flex items-center justify-center bg-zinc-700 rounded-full text-[10px]">{slotIdx + 1}</span>
+        コース{slotIdx + 1}
+        {slotIdx === 1 && <span className="text-[10px] text-zinc-500 font-normal">（任意）</span>}
+        {slot && <button onClick={onClear} className="ml-auto text-[10px] text-zinc-500 hover:text-red-400">クリア</button>}
+      </div>
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        {shiftTypes.map(st => {
+          const selected = slot?.shiftTypeId === st.id;
+          return (
+            <button key={st.id} onClick={() => onSelectShiftType(slotIdx, st.id)} disabled={disabled}
+              className={`p-2 rounded-lg border text-left disabled:opacity-30 ${selected ? 'ring-2 ring-offset-2 ring-offset-zinc-800' : 'border-zinc-700 hover:bg-zinc-700/50'}`}
+              style={selected ? { background: st.color, borderColor: st.color, '--tw-ring-color': st.color } : {}}>
+              <div className={`text-xs font-semibold ${selected ? 'text-white' : 'text-zinc-100'}`}>{st.name}</div>
+              <div className={`text-[10px] ${selected ? 'text-white/80' : 'text-zinc-500'}`}>{st.time}</div>
+            </button>
+          );
+        })}
+      </div>
+      {slot && (
+        <div className="space-y-1">
+          <label className="text-[10px] text-zinc-500">配送コース（任意）</label>
+          <input type="text" value={slot.area || ''} onChange={(e) => onAreaChange(slotIdx, e.target.value)}
+            placeholder={defaultArea ? `デフォルト: ${defaultArea}` : '例: 博多区北部'}
+            className="w-full px-2 py-1.5 text-xs bg-zinc-900 border border-zinc-700 text-zinc-100 placeholder-zinc-600 rounded focus:outline-none focus:ring-1 focus:ring-amber-500" />
+          {areas.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {areas.slice(0, 5).map(a => (
+                <button key={a} type="button" onClick={() => onAreaChange(slotIdx, a)} className="text-[10px] px-1.5 py-0.5 bg-zinc-700 hover:bg-amber-600 text-zinc-300 hover:text-white rounded">{a}</button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ========== AI生成プレビュー ==========
+function GenerationPreviewModal({ currentShifts, previewShifts, staff, days, dayOff, shiftTypes, aiSettings, onApply, onCancel }) {
+  const limit = aiSettings.warnConsecutiveDays || CONSECUTIVE_WORK_LIMIT;
+  const consAlerts = useMemo(() => calcConsecutiveAlerts(staff, days, previewShifts, dayOff, limit), [staff, days, previewShifts, dayOff, limit]);
+  const vOverlaps = useMemo(() => calcVehicleOverlapAlerts(staff, days, previewShifts), [staff, days, previewShifts]);
+  const aOverlaps = useMemo(() => calcAreaOverlapAlerts(staff, days, previewShifts), [staff, days, previewShifts]);
+  const consCount = Object.values(consAlerts).reduce((sum, set) => sum + (set.size > 0 ? 1 : 0), 0);
+  const vCount = Object.keys(vOverlaps).length;
+  const aCount = Object.keys(aOverlaps).length;
+  const stats = useMemo(() => {
+    let off = 0, req = 0, work = 0;
+    Object.values(previewShifts).forEach(v => {
+      const norm = normalizeShift(v);
+      if (norm === 'reqoff') req++;
+      else if (norm === 'off') off++;
+      else if (Array.isArray(norm) && norm.some(s => s?.shiftTypeId)) work++;
+    });
+    return { off, req, work };
+  }, [previewShifts]);
+  const changeCount = useMemo(() => {
+    let count = 0;
+    const allKeys = new Set([...Object.keys(currentShifts), ...Object.keys(previewShifts)]);
+    allKeys.forEach(k => { if (JSON.stringify(currentShifts[k]) !== JSON.stringify(previewShifts[k])) count++; });
+    return count;
+  }, [currentShifts, previewShifts]);
+  const hasNoAlert = consCount === 0 && vCount === 0 && aCount === 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-zinc-800 border border-zinc-700 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between p-4 border-b border-zinc-700">
+          <div className="flex items-center gap-2"><Icon name="Eye" className="w-5 h-5 text-amber-400" /><h3 className="font-semibold text-zinc-100">生成プレビュー</h3></div>
+          <button onClick={onCancel} className="p-1.5 hover:bg-zinc-700 rounded-lg"><Icon name="X" className="w-5 h-5 text-zinc-300" /></button>
+        </div>
+        <div className="p-4 space-y-3 overflow-y-auto">
+          {hasNoAlert && (
+            <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 flex items-center gap-2">
+              <Icon name="ShieldCheck" className="w-5 h-5 text-green-400 flex-shrink-0" />
+              <div className="text-sm text-green-300"><strong>ルール厳守完了</strong><div className="text-[11px] text-green-400/80">連勤・被りなし</div></div>
+            </div>
+          )}
+          <div className="bg-zinc-900 rounded-lg p-3">
+            <div className="text-xs text-zinc-400 mb-2">生成結果</div>
+            <div className="space-y-2">
+              <StatRow label="変更されるセル" value={`${changeCount}件`} accent="amber" />
+              <StatRow label="勤務" value={`${stats.work}件`} accent="default" />
+              <StatRow label="希望休" value={`${stats.req}件`} accent="red" />
+              <StatRow label="公休（固定休み含む）" value={`${stats.off}件`} accent="default" />
+              <div className="border-t border-zinc-700 pt-2 mt-2 space-y-1">
+                <StatRow label={`${limit}連勤発生`} value={consCount > 0 ? `${consCount}名` : 'なし'} accent={consCount > 0 ? 'amber' : 'green'} />
+                <StatRow label="号車被り" value={vCount > 0 ? `${vCount}件` : 'なし'} accent={vCount > 0 ? 'orange' : 'green'} />
+                <StatRow label="コース被り" value={aCount > 0 ? `${aCount}件` : 'なし'} accent={aCount > 0 ? 'yellow' : 'green'} />
+              </div>
+            </div>
+          </div>
+          <div className="bg-zinc-900 rounded-lg p-3">
+            <div className="text-xs text-zinc-400 mb-2">適用ルール（優先順）</div>
+            <ul className="space-y-1 text-xs text-zinc-300">
+              <li>① 希望休を最優先で確定</li>
+              <li>② 固定休み曜日は公休</li>
+              <li>③ {limit}日目は強制公休（連勤回避）</li>
+              <li>④ 号車・コース被りは別区分試行→不可なら公休</li>
+              <li>⑤ 既存セルはすべて再計算</li>
+            </ul>
+          </div>
+        </div>
+        <div className="p-4 border-t border-zinc-700 flex gap-2">
+          <button onClick={onCancel} className="flex-1 py-2 border border-zinc-700 text-zinc-300 rounded-lg text-sm font-medium hover:bg-zinc-700">戻る</button>
+          <button onClick={onApply} className="flex-1 py-2 bg-amber-600 text-white rounded-lg text-sm font-semibold hover:bg-amber-700"><Icon name="Check" className="w-4 h-4 inline mr-1" />適用する</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatRow({ label, value, accent }) {
+  const c = { amber: 'text-amber-400', red: 'text-red-400', orange: 'text-orange-400', yellow: 'text-yellow-400', green: 'text-green-400', default: 'text-zinc-200' }[accent] || 'text-zinc-200';
+  return <div className="flex items-center justify-between text-sm"><span className="text-zinc-400">{label}</span><span className={`font-semibold ${c}`}>{value}</span></div>;
+}
+
+// ========== 班管理 ==========
+function TeamsView({ teams, setTeams, staff, setStaff }) {
+  const dialog = useDialog();
+  const [editing, setEditing] = useState(null);
+  const handleSave = async (data) => {
+    if (data.id && teams.find(t => t.id === data.id)) await setTeams(teams.map(t => t.id === data.id ? data : t));
+    else await setTeams([...teams, { ...data, id: data.id || newId() }]);
+    setEditing(null);
+  };
+  const handleDelete = async (t) => {
+    const memberCount = staff.filter(s => s.teamId === t.id).length;
+    const ok = await dialog.confirm({ title: '班削除', message: memberCount > 0 ? `「${t.name}」を削除します。\n${memberCount}名のスタッフは「未所属」になります。` : `「${t.name}」を削除します。`, confirmText: '削除する' });
+    if (!ok) return;
+    if (memberCount > 0) await setStaff(staff.map(s => s.teamId === t.id ? { ...s, teamId: '' } : s));
+    await setTeams(teams.filter(x => x.id !== t.id));
+  };
+  return (
+    <div className="px-3 pt-3 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold flex items-center gap-2 text-zinc-100"><Icon name="UsersRound" className="w-5 h-5" />班 <span className="text-sm text-zinc-500 font-normal">({teams.length}班)</span></h2>
+        <button onClick={() => setEditing({ color: COLOR_PALETTE[0] })} className="flex items-center gap-1 px-3 py-2 bg-amber-600 text-white text-sm font-medium rounded-full hover:bg-amber-700 shadow-md"><Icon name="Plus" className="w-4 h-4" />追加</button>
+      </div>
+      {teams.length === 0 ? <EmptyState icon="UsersRound" title="班が未登録です" description="A班、B班、午前班など、業務に合わせた班を追加してください。" /> : (
+        <div className="space-y-2">
+          {teams.map(t => {
+            const members = staff.filter(s => s.teamId === t.id);
+            return (
+              <div key={t.id} className="bg-zinc-800 border border-zinc-700 rounded-xl p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <span className="w-4 h-4 rounded flex-shrink-0" style={{ background: t.color }}></span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-sm text-zinc-100 truncate">{t.name}</div>
+                      <div className="text-xs text-zinc-500">{members.length}名</div>
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    <button onClick={() => setEditing(t)} className="p-1.5 text-zinc-400 hover:bg-zinc-700 rounded"><Icon name="Edit2" className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => handleDelete(t)} className="p-1.5 text-red-400 hover:bg-red-900/30 rounded"><Icon name="Trash2" className="w-3.5 h-3.5" /></button>
+                  </div>
+                </div>
+                {members.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-zinc-700 flex flex-wrap gap-1">
+                    {members.map(m => <span key={m.id} className="text-[10px] px-1.5 py-0.5 bg-zinc-900 text-zinc-300 rounded">{m.name}</span>)}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {editing && <TeamEditModal team={editing} onSave={handleSave} onClose={() => setEditing(null)} />}
+    </div>
+  );
+}
+
+function TeamEditModal({ team, onSave, onClose }) {
+  const dialog = useDialog();
+  const [form, setForm] = useState({ id: team.id || '', name: team.name || '', color: team.color || COLOR_PALETTE[0] });
+  const handleSubmit = async () => {
+    if (!form.name.trim()) { await dialog.alert({ message: '班名は必須です' }); return; }
+    onSave({ ...form, name: form.name.trim() });
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-zinc-800 border border-zinc-700 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl">
+        <div className="flex items-center justify-between p-4 border-b border-zinc-700">
+          <h3 className="font-semibold text-zinc-100">{team.id ? '班編集' : '班追加'}</h3>
+          <button onClick={onClose} className="p-1.5 hover:bg-zinc-700 rounded-lg"><Icon name="X" className="w-5 h-5 text-zinc-300" /></button>
+        </div>
+        <div className="p-4 space-y-3">
+          <Field label="班名" required><Input value={form.name} onChange={(v) => setForm({ ...form, name: v })} placeholder="A班、午前班など" autoFocus /></Field>
+          <Field label="表示色">
+            <div className="grid grid-cols-5 gap-2">
+              {COLOR_PALETTE.map(c => (
+                <button key={c} type="button" onClick={() => setForm({ ...form, color: c })}
+                  className={`aspect-square rounded-lg ${form.color === c ? 'ring-2 ring-offset-2 ring-offset-zinc-800 ring-white scale-110' : 'opacity-70 hover:opacity-100'}`}
+                  style={{ background: c }} />
+              ))}
+            </div>
+          </Field>
+        </div>
+        <div className="p-4 border-t border-zinc-700 flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2 border border-zinc-700 text-zinc-300 rounded-lg text-sm font-medium hover:bg-zinc-700">キャンセル</button>
+          <button onClick={handleSubmit} className="flex-1 py-2 bg-amber-600 text-white rounded-lg text-sm font-semibold hover:bg-amber-700"><Icon name="Save" className="w-4 h-4 inline mr-1" />保存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ========== AI設定 ==========
+function AiSettingsView({ aiSettings, setAiSettings, staff, shiftTypes, teams }) {
+  const [editingPattern, setEditingPattern] = useState(null);
+  const teamById = useMemo(() => { const m = {}; teams.forEach(t => m[t.id] = t); return m; }, [teams]);
+  const updateSetting = async (key, value) => await setAiSettings({ ...aiSettings, [key]: value });
+  const updatePattern = async (sid, pattern) => await setAiSettings({ ...aiSettings, weeklyPatterns: { ...aiSettings.weeklyPatterns, [sid]: pattern } });
+  const clearPattern = async (sid) => {
+    const patterns = { ...aiSettings.weeklyPatterns }; delete patterns[sid];
+    await setAiSettings({ ...aiSettings, weeklyPatterns: patterns });
+  };
+  return (
+    <div className="px-3 pt-3 space-y-4">
+      <h2 className="text-lg font-semibold flex items-center gap-2 text-zinc-100"><Icon name="Sparkles" className="w-5 h-5 text-amber-400" />AI設定</h2>
+      <section className="bg-green-500/5 border border-green-500/20 rounded-xl p-3">
+        <div className="flex items-start gap-2">
+          <Icon name="ShieldCheck" className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" />
+          <div className="text-xs text-green-200/90">
+            <strong className="text-green-300">AI自動生成はルール厳守で実行されます</strong>
+            <ul className="mt-1 space-y-0.5 text-green-300/70">
+              <li>① 希望休は必ず確保</li><li>② 固定休み曜日は確実に公休</li>
+              <li>③ 連勤上限到達時は強制公休</li><li>④ 号車・コース被りは別区分試行→不可なら公休</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+      <section className="bg-zinc-800 border border-zinc-700 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-zinc-700"><h3 className="font-semibold text-sm text-zinc-100 flex items-center gap-2"><Icon name="Settings" className="w-4 h-4 text-zinc-400" />生成ルール</h3></div>
+        <div className="p-4 space-y-3">
+          <div>
+            <label className="text-sm text-zinc-200 font-medium mb-2 block">連勤上限日数</label>
+            <p className="text-xs text-zinc-500 mb-2">この日数で強制公休を挿入（手動入力時は警告のみ）</p>
+            <select value={aiSettings.warnConsecutiveDays || CONSECUTIVE_WORK_LIMIT} onChange={(e) => updateSetting('warnConsecutiveDays', parseInt(e.target.value))}
+              className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 text-zinc-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+              {[5,6,7,8,9,10].map(n => <option key={n} value={n}>{n}日連続まで（{n}日目は公休）</option>)}
+            </select>
+          </div>
+        </div>
+      </section>
+      <section className="bg-zinc-800 border border-zinc-700 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-zinc-700">
+          <h3 className="font-semibold text-sm text-zinc-100">スタッフ別 曜日パターン</h3>
+          <p className="text-[11px] text-zinc-500 mt-0.5">曜日ごとにシフト区分を細かく指定（固定休みより優先順位は下）</p>
+        </div>
+        <div className="p-4">
+          {staff.length === 0 ? <div className="text-center text-sm text-zinc-500 py-6">スタッフを先に登録してください</div> : (
+            <div className="space-y-2">
+              {staff.map(s => {
+                const pattern = aiSettings.weeklyPatterns?.[s.id];
+                const hasPattern = !!pattern;
+                const fixedOffs = s.fixedDayOff || [];
+                const team = s.teamId && teamById[s.teamId];
+                return (
+                  <div key={s.id} className="bg-zinc-900 rounded-lg p-2.5" style={team ? { borderLeftWidth: '3px', borderLeftColor: team.color, borderLeftStyle: 'solid' } : {}}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <div className="text-sm font-medium text-zinc-100 flex items-center gap-1">{team && <span className="w-1.5 h-1.5 rounded-full" style={{ background: team.color }}></span>}{s.name}</div>
+                        <div className="text-[10px] text-zinc-500 flex flex-wrap gap-1">
+                          {team && <span>{team.name} ・</span>}
+                          {fixedOffs.length > 0 && <span className="text-zinc-400"><Icon name="Repeat" className="w-2.5 h-2.5 inline" /> 固定休: {fixedOffs.map(dow => DOW[dow]).join('・')}</span>}
+                          {hasPattern && <span>・曜日パターン適用中</span>}
+                          {!hasPattern && <span>・デフォルト: {shiftTypes.find(st => st.id === s.defaultShiftType)?.name || '未設定'}</span>}
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                        <button onClick={() => setEditingPattern(s)} className="text-[11px] px-2 py-1 bg-zinc-700 hover:bg-amber-600 text-zinc-300 hover:text-white rounded">{hasPattern ? '編集' : '設定'}</button>
+                        {hasPattern && <button onClick={() => clearPattern(s.id)} className="text-[11px] px-2 py-1 bg-zinc-700 hover:bg-red-600 text-zinc-300 hover:text-white rounded">解除</button>}
+                      </div>
+                    </div>
+                    {hasPattern && (
+                      <div className="grid grid-cols-7 gap-1 text-center">
+                        {DOW.map((d, dow) => {
+                          const stId = pattern[dow];
+                          const st = shiftTypes.find(t => t.id === stId);
+                          const isFixed = fixedOffs.includes(dow);
+                          return (
+                            <div key={dow} className="text-[10px]">
+                              <div className={`font-semibold ${dow === 0 ? 'text-red-400' : dow === 6 ? 'text-blue-400' : 'text-zinc-400'}`}>{d}</div>
+                              <div className="mt-0.5 px-0.5 py-0.5 rounded text-white text-[9px] truncate" style={{ background: isFixed ? '#3f3f46' : (st?.color || '#3f3f46'), opacity: isFixed ? 0.6 : 1 }}>
+                                {isFixed ? '固' : (st?.name || '休')}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+      {editingPattern && (
+        <PatternEditModal staff={editingPattern} shiftTypes={shiftTypes}
+          currentPattern={aiSettings.weeklyPatterns?.[editingPattern.id] || {}}
+          onSave={async (p) => { await updatePattern(editingPattern.id, p); setEditingPattern(null); }}
+          onClose={() => setEditingPattern(null)} />
+      )}
+    </div>
+  );
+}
+
+function PatternEditModal({ staff, shiftTypes, currentPattern, onSave, onClose }) {
+  const [pattern, setPattern] = useState(() => {
+    const p = {}; for (let i = 0; i < 7; i++) p[i] = currentPattern[i] !== undefined ? currentPattern[i] : null; return p;
+  });
+  const fixedOffs = staff.fixedDayOff || [];
+  const handleSetDay = (dow, stId) => setPattern({ ...pattern, [dow]: stId });
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-zinc-800 border border-zinc-700 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-zinc-700">
+          <div><h3 className="font-semibold text-zinc-100">{staff.name}</h3><p className="text-xs text-zinc-400">曜日別パターン設定</p></div>
+          <button onClick={onClose} className="p-1.5 hover:bg-zinc-700 rounded-lg"><Icon name="X" className="w-5 h-5 text-zinc-300" /></button>
+        </div>
+        <div className="p-4 space-y-3 overflow-y-auto">
+          {fixedOffs.length > 0 && (
+            <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-2 text-[11px] text-zinc-400">
+              <Icon name="Repeat" className="w-3 h-3 inline mr-1" />固定休み（{fixedOffs.map(dow => DOW[dow]).join('・')}）が優先されます
+            </div>
+          )}
+          {DOW.map((d, dow) => {
+            const isFixed = fixedOffs.includes(dow);
+            return (
+              <div key={dow} className={isFixed ? 'opacity-50' : ''}>
+                <div className={`text-xs font-semibold mb-1 flex items-center gap-1 ${dow === 0 ? 'text-red-400' : dow === 6 ? 'text-blue-400' : 'text-zinc-300'}`}>
+                  {d}曜日{isFixed && <span className="text-[10px] text-zinc-500">（固定休み）</span>}
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button onClick={() => handleSetDay(dow, null)} disabled={isFixed}
+                    className={`p-2 rounded-lg text-xs ${pattern[dow] === null ? 'bg-zinc-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700'}`}>公休</button>
+                  {shiftTypes.map(st => {
+                    const selected = pattern[dow] === st.id;
+                    return (
+                      <button key={st.id} onClick={() => handleSetDay(dow, st.id)} disabled={isFixed}
+                        className={`p-2 rounded-lg text-xs ${selected ? 'text-white ring-2 ring-offset-2 ring-offset-zinc-800' : 'bg-zinc-900 text-zinc-300 hover:bg-zinc-700'}`}
+                        style={selected ? { background: st.color, '--tw-ring-color': st.color } : {}}>{st.name}</button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="p-4 border-t border-zinc-700 flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2 border border-zinc-700 text-zinc-300 rounded-lg text-sm font-medium hover:bg-zinc-700">キャンセル</button>
+          <button onClick={() => onSave(pattern)} className="flex-1 py-2 bg-amber-600 text-white rounded-lg text-sm font-semibold hover:bg-amber-700"><Icon name="Save" className="w-4 h-4 inline mr-1" />保存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ========== スタッフ管理 ==========
+function StaffView({ staff, setStaff, shiftTypes, areas, setAreas, roles, setRoles, teams }) {
+  const dialog = useDialog();
+  const [editing, setEditing] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterTeamId, setFilterTeamId] = useState('all');
+  const teamById = useMemo(() => { const m = {}; teams.forEach(t => m[t.id] = t); return m; }, [teams]);
+  const filtered = useMemo(() => {
+    let list = staff;
+    if (filterTeamId === 'none') list = list.filter(s => !s.teamId || !teamById[s.teamId]);
+    else if (filterTeamId !== 'all') list = list.filter(s => s.teamId === filterTeamId);
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(s => s.name.toLowerCase().includes(q) || (s.role || '').toLowerCase().includes(q) || (s.vehicle || '').toLowerCase().includes(q) || (s.area || '').toLowerCase().includes(q));
+    }
+    return list;
+  }, [staff, searchQuery, filterTeamId, teamById]);
+
+  const handleSave = async (data) => {
+    if (data.id && staff.find(s => s.id === data.id)) await setStaff(staff.map(s => s.id === data.id ? data : s));
+    else await setStaff([...staff, { ...data, id: data.id || newId() }]);
+    if (data.role && !roles.includes(data.role)) await setRoles([...roles, data.role]);
+    if (data.area && !areas.includes(data.area)) await setAreas([...areas, data.area]);
+    setEditing(null);
+  };
+  const handleDelete = async (s) => {
+    const ok = await dialog.confirm({ title: 'スタッフ削除', message: `「${s.name}」を削除します。\nこのスタッフのシフト・希望休も影響を受けます。`, confirmText: '削除する' });
+    if (!ok) return;
+    await setStaff(staff.filter(x => x.id !== s.id));
+  };
+
+  return (
+    <div className="px-3 pt-3 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold flex items-center gap-2 text-zinc-100"><Icon name="Users" className="w-5 h-5" />スタッフ <span className="text-sm text-zinc-500 font-normal">({staff.length}名)</span></h2>
+        <button onClick={() => setEditing({})} className="flex items-center gap-1 px-3 py-2 bg-amber-600 text-white text-sm font-medium rounded-full hover:bg-amber-700 shadow-md"><Icon name="Plus" className="w-4 h-4" />追加</button>
+      </div>
+      <div className="relative">
+        <Icon name="Search" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+        <input type="text" placeholder="氏名・役職・号車・コースで検索" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full pl-9 pr-3 py-2 text-sm bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 rounded-full focus:outline-none focus:ring-2 focus:ring-amber-500" />
+      </div>
+      {teams.length > 0 && <TeamFilter teams={teams} selectedTeamId={filterTeamId} setSelectedTeamId={setFilterTeamId} />}
+      {filtered.length === 0 ? <EmptyState icon="Users" title={staff.length === 0 ? 'スタッフ未登録' : '該当なし'} description={staff.length === 0 ? '右上の「追加」から新しいスタッフを登録できます。' : '検索条件を変えてみてください。'} /> : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {filtered.map(s => {
+            const st = shiftTypes.find(t => t.id === s.defaultShiftType);
+            const fixedOffs = s.fixedDayOff || [];
+            const team = s.teamId && teamById[s.teamId];
+            return (
+              <div key={s.id} className="bg-zinc-800 border border-zinc-700 rounded-xl p-3 hover:border-zinc-600" style={team ? { borderLeftWidth: '3px', borderLeftColor: team.color, borderLeftStyle: 'solid' } : {}}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-zinc-100">{s.name}</span>
+                      {team && <span className="text-[10px] px-1.5 py-0.5 rounded text-white" style={{ background: team.color }}>{team.name}</span>}
+                      {s.role && <span className="text-[10px] px-1.5 py-0.5 bg-zinc-700 text-zinc-300 rounded">{s.role}</span>}
+                    </div>
+                    <div className="mt-1.5 space-y-0.5 text-xs text-zinc-400">
+                      {s.vehicle && <div className="flex items-center gap-1"><Icon name="Truck" className="w-3 h-3 text-amber-500" /><span>{s.vehicle}</span></div>}
+                      {s.area && <div className="flex items-center gap-1"><Icon name="MapPin" className="w-3 h-3 text-rose-400" /><span>{s.area}</span></div>}
+                      {st && <div className="flex items-center gap-1"><Icon name="Clock" className="w-3 h-3" style={{ color: st.color }} /><span>{st.name}</span></div>}
+                      {fixedOffs.length > 0 && <div className="flex items-center gap-1"><Icon name="Repeat" className="w-3 h-3 text-zinc-500" /><span>毎週{fixedOffs.map(dow => DOW[dow]).join('・')}休</span></div>}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <button onClick={() => setEditing(s)} className="p-1.5 text-zinc-400 hover:bg-zinc-700 rounded"><Icon name="Edit2" className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => handleDelete(s)} className="p-1.5 text-red-400 hover:bg-red-900/30 rounded"><Icon name="Trash2" className="w-3.5 h-3.5" /></button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {editing && <StaffEditModal staff={editing} shiftTypes={shiftTypes} areas={areas} roles={roles} teams={teams} onSave={handleSave} onClose={() => setEditing(null)} />}
+    </div>
+  );
+}
+
+function StaffEditModal({ staff, shiftTypes, areas, roles, teams, onSave, onClose }) {
+  const dialog = useDialog();
+  const [form, setForm] = useState({
+    id: staff.id || '', name: staff.name || '', teamId: staff.teamId || '', role: staff.role || '',
+    vehicle: staff.vehicle || '', area: staff.area || '', defaultShiftType: staff.defaultShiftType || '',
+    fixedDayOff: Array.isArray(staff.fixedDayOff) ? [...staff.fixedDayOff] : [],
+  });
+  const toggleFixedOff = (dow) => {
+    const next = [...form.fixedDayOff];
+    const idx = next.indexOf(dow);
+    if (idx >= 0) next.splice(idx, 1); else next.push(dow);
+    next.sort();
+    setForm({ ...form, fixedDayOff: next });
+  };
+  const handleSubmit = async () => {
+    if (!form.name.trim()) { await dialog.alert({ message: '氏名は必須です' }); return; }
+    onSave({ ...form, name: form.name.trim(), role: form.role.trim(), vehicle: form.vehicle.trim(), area: form.area.trim() });
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-zinc-800 border border-zinc-700 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-zinc-700">
+          <h3 className="font-semibold text-zinc-100">{staff.id ? 'スタッフ編集' : 'スタッフ追加'}</h3>
+          <button onClick={onClose} className="p-1.5 hover:bg-zinc-700 rounded-lg"><Icon name="X" className="w-5 h-5 text-zinc-300" /></button>
+        </div>
+        <div className="p-4 space-y-3 overflow-y-auto">
+          <Field label="氏名" required><Input value={form.name} onChange={(v) => setForm({ ...form, name: v })} placeholder="山田太郎" autoFocus /></Field>
+          <Field label="所属班">
+            <select value={form.teamId} onChange={(e) => setForm({ ...form, teamId: e.target.value })}
+              className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 text-zinc-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+              <option value="">未所属</option>
+              {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+            {teams.length === 0 && <p className="text-[10px] text-zinc-500 mt-1">「班」タブから班を追加できます</p>}
+          </Field>
+          <Field label="役職"><Input value={form.role} onChange={(v) => setForm({ ...form, role: v })} placeholder="ドライバー、班長など" />{roles.length > 0 && <Suggestions items={roles} onSelect={(v) => setForm({ ...form, role: v })} />}</Field>
+          <Field label="号車"><Input value={form.vehicle} onChange={(v) => setForm({ ...form, vehicle: v })} placeholder="1号車" /></Field>
+          <Field label="デフォルト配達コース"><Input value={form.area} onChange={(v) => setForm({ ...form, area: v })} placeholder="博多区北部 など" />{areas.length > 0 && <Suggestions items={areas} onSelect={(v) => setForm({ ...form, area: v })} />}</Field>
+          <Field label="デフォルトシフト区分">
+            <select value={form.defaultShiftType} onChange={(e) => setForm({ ...form, defaultShiftType: e.target.value })}
+              className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 text-zinc-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+              <option value="">選択なし</option>
+              {shiftTypes.map(st => <option key={st.id} value={st.id}>{st.name}（{st.time}）</option>)}
+            </select>
+          </Field>
+          <div>
+            <label className="text-xs font-semibold text-zinc-300 mb-1 flex items-center gap-1"><Icon name="Repeat" className="w-3 h-3" />固定休み（毎週）</label>
+            <p className="text-[10px] text-zinc-500 mb-2">複数選択可。AI生成時に確実に公休配置されます</p>
+            <div className="grid grid-cols-7 gap-1">
+              {DOW.map((d, dow) => {
+                const selected = form.fixedDayOff.includes(dow);
+                return (
+                  <button key={dow} type="button" onClick={() => toggleFixedOff(dow)}
+                    className={`aspect-square rounded-lg text-sm font-medium ${selected ? 'bg-amber-500 text-white shadow-md' : dow === 0 ? 'bg-red-950/30 text-red-300 hover:bg-red-900/40' : dow === 6 ? 'bg-blue-950/30 text-blue-300 hover:bg-blue-900/40' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-700'}`}>
+                    {d}
+                  </button>
+                );
+              })}
+            </div>
+            {form.fixedDayOff.length > 0 && <div className="mt-2 text-[11px] text-zinc-400">毎週<strong className="text-amber-400">{form.fixedDayOff.map(dow => DOW[dow]).join('・')}曜日</strong>を固定休み</div>}
+          </div>
+        </div>
+        <div className="p-4 border-t border-zinc-700 flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2 border border-zinc-700 text-zinc-300 rounded-lg text-sm font-medium hover:bg-zinc-700">キャンセル</button>
+          <button onClick={handleSubmit} className="flex-1 py-2 bg-amber-600 text-white rounded-lg text-sm font-semibold hover:bg-amber-700"><Icon name="Save" className="w-4 h-4 inline mr-1" />保存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, required, children }) {
+  return <div><label className="block text-xs font-semibold text-zinc-300 mb-1">{label}{required && <span className="text-red-400 ml-1">*</span>}</label>{children}</div>;
+}
+function Input({ value, onChange, placeholder, autoFocus }) {
+  return <input type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} autoFocus={autoFocus}
+    className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 text-zinc-100 placeholder-zinc-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm" />;
+}
+function Suggestions({ items, onSelect }) {
+  return <div className="flex flex-wrap gap-1 mt-1">{items.map(v => <button key={v} type="button" onClick={() => onSelect(v)} className="text-[10px] px-2 py-0.5 bg-zinc-700 hover:bg-amber-600 text-zinc-300 hover:text-white rounded">{v}</button>)}</div>;
+}
+
+// ========== シフト区分 ==========
+function ShiftTypeView({ shiftTypes, setShiftTypes }) {
+  const dialog = useDialog();
+  const [editing, setEditing] = useState(null);
+  const handleSave = async (data) => {
+    if (data.id && shiftTypes.find(s => s.id === data.id)) await setShiftTypes(shiftTypes.map(s => s.id === data.id ? data : s));
+    else await setShiftTypes([...shiftTypes, { ...data, id: data.id || newId() }]);
+    setEditing(null);
+  };
+  const handleDelete = async (st) => {
+    const ok = await dialog.confirm({ title: '区分削除', message: `「${st.name}」を削除します。`, confirmText: '削除する' });
+    if (!ok) return;
+    await setShiftTypes(shiftTypes.filter(s => s.id !== st.id));
+  };
+  return (
+    <div className="px-3 pt-3 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold flex items-center gap-2 text-zinc-100"><Icon name="Clock" className="w-5 h-5" />シフト区分</h2>
+        <button onClick={() => setEditing({ color: COLOR_PALETTE[0] })} className="flex items-center gap-1 px-3 py-2 bg-amber-600 text-white text-sm font-medium rounded-full hover:bg-amber-700 shadow-md"><Icon name="Plus" className="w-4 h-4" />追加</button>
+      </div>
+      <div className="space-y-2">
+        {shiftTypes.map(st => (
+          <div key={st.id} className="bg-zinc-800 border border-zinc-700 rounded-xl p-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="w-4 h-4 rounded" style={{ background: st.color }}></span>
+              <div>
+                <div className="font-semibold text-sm text-zinc-100">{st.name}</div>
+                <div className="text-xs text-zinc-400">{st.time}</div>
+              </div>
+            </div>
+            <div className="flex gap-1">
+              <button onClick={() => setEditing(st)} className="p-1.5 text-zinc-400 hover:bg-zinc-700 rounded"><Icon name="Edit2" className="w-3.5 h-3.5" /></button>
+              <button onClick={() => handleDelete(st)} className="p-1.5 text-red-400 hover:bg-red-900/30 rounded"><Icon name="Trash2" className="w-3.5 h-3.5" /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {shiftTypes.length === 0 && <EmptyState icon="Clock" title="区分が未登録です" description="早朝便、午前便など、業務に合わせた区分を追加してください。" />}
+      {editing && <ShiftTypeEditModal shiftType={editing} onSave={handleSave} onClose={() => setEditing(null)} />}
+    </div>
+  );
+}
+
+function ShiftTypeEditModal({ shiftType, onSave, onClose }) {
+  const dialog = useDialog();
+  const [form, setForm] = useState({ id: shiftType.id || '', name: shiftType.name || '', time: shiftType.time || '', color: shiftType.color || COLOR_PALETTE[0] });
+  const handleSubmit = async () => {
+    if (!form.name.trim()) { await dialog.alert({ message: '区分名は必須です' }); return; }
+    onSave({ ...form, name: form.name.trim(), time: form.time.trim() });
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-zinc-800 border border-zinc-700 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl">
+        <div className="flex items-center justify-between p-4 border-b border-zinc-700">
+          <h3 className="font-semibold text-zinc-100">{shiftType.id ? '区分編集' : '区分追加'}</h3>
+          <button onClick={onClose} className="p-1.5 hover:bg-zinc-700 rounded-lg"><Icon name="X" className="w-5 h-5 text-zinc-300" /></button>
+        </div>
+        <div className="p-4 space-y-3">
+          <Field label="区分名" required><Input value={form.name} onChange={(v) => setForm({ ...form, name: v })} placeholder="早朝便など" autoFocus /></Field>
+          <Field label="時間帯"><Input value={form.time} onChange={(v) => setForm({ ...form, time: v })} placeholder="例: 5:00-9:00" /></Field>
+          <Field label="表示色">
+            <div className="grid grid-cols-5 gap-2">
+              {COLOR_PALETTE.map(c => (
+                <button key={c} type="button" onClick={() => setForm({ ...form, color: c })}
+                  className={`aspect-square rounded-lg ${form.color === c ? 'ring-2 ring-offset-2 ring-offset-zinc-800 ring-white scale-110' : 'opacity-70 hover:opacity-100'}`} style={{ background: c }} />
+              ))}
+            </div>
+          </Field>
+        </div>
+        <div className="p-4 border-t border-zinc-700 flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2 border border-zinc-700 text-zinc-300 rounded-lg text-sm font-medium hover:bg-zinc-700">キャンセル</button>
+          <button onClick={handleSubmit} className="flex-1 py-2 bg-amber-600 text-white rounded-lg text-sm font-semibold hover:bg-amber-700"><Icon name="Save" className="w-4 h-4 inline mr-1" />保存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ========== 希望休 ==========
+function DayOffView({ currentMonth, days, staff, dayOff, setDayOff, teams }) {
+  const [selectedStaffId, setSelectedStaffId] = useState(staff[0]?.id || null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterTeamId, setFilterTeamId] = useState('all');
+  const teamById = useMemo(() => { const m = {}; teams.forEach(t => m[t.id] = t); return m; }, [teams]);
+  useEffect(() => { if (!staff.find(s => s.id === selectedStaffId) && staff.length > 0) setSelectedStaffId(staff[0].id); }, [staff, selectedStaffId]);
+  const filteredStaff = useMemo(() => {
+    let list = staff;
+    if (filterTeamId === 'none') list = list.filter(s => !s.teamId || !teamById[s.teamId]);
+    else if (filterTeamId !== 'all') list = list.filter(s => s.teamId === filterTeamId);
+    if (searchQuery) { const q = searchQuery.toLowerCase(); list = list.filter(s => s.name.toLowerCase().includes(q)); }
+    return list;
+  }, [staff, searchQuery, filterTeamId, teamById]);
+  const selected = staff.find(s => s.id === selectedStaffId);
+  const offDates = (dayOff[selectedStaffId] || []);
+  const toggleDay = async (date) => {
+    if (!selectedStaffId) return;
+    const current = dayOff[selectedStaffId] || [];
+    const next = current.includes(date) ? current.filter(d => d !== date) : [...current, date];
+    await setDayOff({ ...dayOff, [selectedStaffId]: next });
+  };
+  if (staff.length === 0) return <div className="px-4"><EmptyState icon="Users" title="スタッフが未登録です" description="先にスタッフを登録してください。" /></div>;
+
+  return (
+    <div className="px-3 pt-3 space-y-3">
+      <h2 className="text-lg font-semibold flex items-center gap-2 text-zinc-100"><Icon name="CalendarOff" className="w-5 h-5" />希望休 <span className="text-sm text-zinc-500 font-normal">{monthLabel(currentMonth)}</span></h2>
+      {teams.length > 0 && <TeamFilter teams={teams} selectedTeamId={filterTeamId} setSelectedTeamId={setFilterTeamId} />}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="bg-zinc-800 border border-zinc-700 rounded-xl overflow-hidden md:col-span-1">
+          <div className="p-2 border-b border-zinc-700">
+            <div className="relative">
+              <Icon name="Search" className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-zinc-500" />
+              <input type="text" placeholder="氏名検索" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-7 pr-2 py-1.5 text-xs bg-zinc-900 border border-zinc-700 text-zinc-100 placeholder-zinc-500 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-500" />
+            </div>
+          </div>
+          <div className="max-h-[60vh] overflow-y-auto">
+            {filteredStaff.map(s => {
+              const count = (dayOff[s.id] || []).filter(d => d.startsWith(currentMonth)).length;
+              const active = s.id === selectedStaffId;
+              const team = s.teamId && teamById[s.teamId];
+              return (
+                <button key={s.id} onClick={() => setSelectedStaffId(s.id)}
+                  className={`w-full text-left px-3 py-2 border-b border-zinc-700/50 transition-colors ${active ? 'bg-amber-500/15 border-l-4 border-l-amber-500' : 'hover:bg-zinc-700/50'}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="font-medium text-sm text-zinc-100 flex items-center gap-1.5">{team && <span className="w-1.5 h-1.5 rounded-full" style={{ background: team.color }}></span>}{s.name}</div>
+                    {count > 0 && <span className="text-[10px] px-1.5 py-0.5 bg-red-500/20 text-red-400 rounded-full font-semibold">{count}日</span>}
+                  </div>
+                  {(s.role || s.vehicle || team) && <div className="text-[10px] text-zinc-500 mt-0.5">{[team?.name, s.role, s.vehicle].filter(Boolean).join(' / ')}</div>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-3 md:col-span-2">
+          {selected ? (
+            <Fragment>
+              <div className="mb-3 pb-3 border-b border-zinc-700">
+                <div className="font-bold text-zinc-100">{selected.name}</div>
+                <div className="text-xs text-zinc-400">日付をタップで希望休を切替</div>
+                {(selected.fixedDayOff || []).length > 0 && (
+                  <div className="text-[10px] text-zinc-500 mt-1 flex items-center gap-1"><Icon name="Repeat" className="w-2.5 h-2.5" />固定休み: 毎週{(selected.fixedDayOff || []).map(dow => DOW[dow]).join('・')}</div>
+                )}
+              </div>
+              <div className="grid grid-cols-7 gap-1 text-center">
+                {DOW.map((d, i) => <div key={d} className={`text-[10px] font-semibold py-1 ${i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-zinc-500'}`}>{d}</div>)}
+                {Array.from({ length: days[0]?.dow || 0 }).map((_, i) => <div key={`empty-${i}`}></div>)}
+                {days.map(d => {
+                  const isOff = offDates.includes(d.date);
+                  const isFixed = isFixedDayOff(selected, d.dow);
+                  return (
+                    <button key={d.date} onClick={() => toggleDay(d.date)}
+                      className={`aspect-square rounded-lg text-sm font-medium relative ${isOff ? 'bg-red-500 text-white shadow-md scale-95' : isFixed ? 'bg-zinc-700 text-zinc-300 ring-1 ring-zinc-600' : d.dow === 0 ? 'bg-red-950/30 text-red-300 hover:bg-red-900/40' : d.dow === 6 ? 'bg-blue-950/30 text-blue-300 hover:bg-blue-900/40' : 'bg-zinc-700/50 text-zinc-200 hover:bg-zinc-700'}`}>
+                      {d.day}{isFixed && !isOff && <Icon name="Repeat" className="absolute top-0.5 right-0.5 w-2 h-2 text-zinc-500" />}
+                    </button>
+                  );
+                })}
+              </div>
+              {offDates.filter(d => d.startsWith(currentMonth)).length > 0 && (
+                <div className="mt-3 pt-3 border-t border-zinc-700">
+                  <div className="text-xs font-semibold text-zinc-400 mb-1.5">希望休一覧</div>
+                  <div className="flex flex-wrap gap-1">
+                    {offDates.filter(d => d.startsWith(currentMonth)).sort().map(d => {
+                      const day = parseInt(d.split('-')[2]);
+                      return (
+                        <span key={d} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-red-500/20 text-red-300 rounded-md">
+                          {day}日
+                          <button onClick={() => toggleDay(d)} className="hover:bg-red-500/30 rounded-full"><Icon name="X" className="w-3 h-3" /></button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </Fragment>
+          ) : <div className="text-center text-zinc-500 py-12 text-sm">スタッフを選択してください</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ========== セキュリティ ==========
+function SecurityView() {
+  const dialog = useDialog();
+  const { authConfig, setAuthConfig } = useAuth();
+  const [editing, setEditing] = useState(false);
+  return (
+    <div className="px-3 pt-3 space-y-4">
+      <h2 className="text-lg font-semibold flex items-center gap-2 text-zinc-100"><Icon name="KeyRound" className="w-5 h-5" />セキュリティ</h2>
+      <section className="bg-zinc-800 border border-zinc-700 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-zinc-700">
+          <h3 className="font-semibold text-sm text-zinc-100">管理者パスコード</h3>
+          <p className="text-[11px] text-zinc-500 mt-0.5">管理者ログイン時に使用する4桁のパスコード</p>
+        </div>
+        <div className="p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm text-zinc-300">現在のパスコード</div>
+              <div className="text-2xl font-mono font-bold text-zinc-100 mt-1 tracking-widest">••••</div>
+            </div>
+            <button onClick={() => setEditing(true)} className="px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium rounded-lg flex items-center gap-1"><Icon name="Edit2" className="w-3.5 h-3.5" />変更</button>
+          </div>
+          {authConfig.passcode === DEFAULT_PASSCODE && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 flex items-start gap-2">
+              <Icon name="AlertTriangle" className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div className="text-xs text-amber-200">
+                <strong className="text-amber-300">初期パスコードのままです</strong>
+                <div className="text-amber-300/70 mt-0.5">セキュリティのため、独自のパスコードに変更してください</div>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+      <section className="bg-zinc-800 border border-zinc-700 rounded-xl p-4">
+        <h3 className="font-semibold text-sm text-zinc-100 mb-2 flex items-center gap-2"><Icon name="AlertTriangle" className="w-4 h-4 text-amber-400" />データの保存について</h3>
+        <p className="text-xs text-zinc-400 leading-relaxed">
+          このアプリのデータは <strong className="text-zinc-300">このブラウザのローカル保存領域</strong> に保存されます。<br />
+          ブラウザのデータを削除すると消える点にご注意ください。<br />
+          複数の端末でデータを共有することはできません。
+        </p>
+      </section>
+      {editing && (
+        <PasscodeChangeModal currentPasscode={authConfig.passcode}
+          onSave={async (newCode) => { await setAuthConfig({ ...authConfig, passcode: newCode }); setEditing(false); await dialog.alert({ title: '変更完了', message: '新しいパスコードに変更しました。' }); }}
+          onClose={() => setEditing(false)} />
+      )}
+    </div>
+  );
+}
+
+function PasscodeChangeModal({ currentPasscode, onSave, onClose }) {
+  const [step, setStep] = useState('current');
+  const [input, setInput] = useState('');
+  const [newCode, setNewCode] = useState('');
+  const [error, setError] = useState('');
+  const stepTitle = { current: '現在のパスコードを入力', new: '新しいパスコードを入力', confirm: 'もう一度入力して確認' }[step];
+  const handleNumber = (n) => {
+    if (input.length >= 4) return;
+    setError('');
+    const next = input + n;
+    setInput(next);
+    if (next.length === 4) setTimeout(() => {
+      if (step === 'current') {
+        if (next === currentPasscode) { setInput(''); setStep('new'); }
+        else { setError('現在のパスコードが違います'); setInput(''); }
+      } else if (step === 'new') { setNewCode(next); setInput(''); setStep('confirm'); }
+      else if (step === 'confirm') {
+        if (next === newCode) onSave(next);
+        else { setError('パスコードが一致しません'); setInput(''); setStep('new'); setNewCode(''); }
+      }
+    }, 100);
+  };
+  const handleDelete = () => { setError(''); setInput(input.slice(0, -1)); };
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
+      <div className="bg-zinc-800 border border-zinc-700 rounded-3xl shadow-2xl max-w-xs w-full p-6">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-semibold text-zinc-100">パスコード変更</h3>
+          <button onClick={onClose} className="p-1 hover:bg-zinc-700 rounded-lg"><Icon name="X" className="w-4 h-4 text-zinc-300" /></button>
+        </div>
+        <p className="text-xs text-zinc-400 mb-4">{stepTitle}</p>
+        <div className="flex justify-center gap-3 mb-6">
+          {[0,1,2,3].map(i => <div key={i} className={`w-3 h-3 rounded-full ${error ? 'bg-red-500' : i < input.length ? 'bg-amber-500 scale-110' : 'bg-zinc-700'}`} />)}
+        </div>
+        {error && <div className="text-center text-xs text-red-400 mb-3">{error}</div>}
+        <div className="grid grid-cols-3 gap-2">
+          {[1,2,3,4,5,6,7,8,9].map(n => <button key={n} onClick={() => handleNumber(String(n))} className="aspect-square text-xl font-semibold text-zinc-100 bg-zinc-700 hover:bg-zinc-600 active:bg-amber-600 rounded-xl">{n}</button>)}
+          <div></div>
+          <button onClick={() => handleNumber('0')} className="aspect-square text-xl font-semibold text-zinc-100 bg-zinc-700 hover:bg-zinc-600 active:bg-amber-600 rounded-xl">0</button>
+          <button onClick={handleDelete} disabled={input.length === 0} className="aspect-square text-zinc-300 bg-zinc-700/50 hover:bg-zinc-700 disabled:opacity-30 rounded-xl flex items-center justify-center"><Icon name="X" className="w-5 h-5" /></button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ========== 祝祭日・休業日管理 ==========
+function HolidaysView({ customHolidays, setCustomHolidays }) {
+  const dialog = useDialog();
+  const [editing, setEditing] = useState(null);
+  const [filterYear, setFilterYear] = useState(new Date().getFullYear());
+
+  // 祝日リスト統合（日本祝日 + カスタム）
+  const allHolidays = useMemo(() => {
+    const merged = {};
+    Object.entries(JP_HOLIDAYS).forEach(([date, name]) => {
+      if (date.startsWith(String(filterYear))) merged[date] = { name, type: 'jp' };
+    });
+    Object.entries(customHolidays || {}).forEach(([date, name]) => {
+      if (date.startsWith(String(filterYear))) merged[date] = { name, type: 'custom' };
+    });
+    return Object.entries(merged).sort(([a], [b]) => a.localeCompare(b)).map(([date, info]) => ({ date, ...info }));
+  }, [customHolidays, filterYear]);
+
+  const handleSave = async (date, name) => {
+    if (!date || !name.trim()) { await dialog.alert({ message: '日付と名称を入力してください' }); return; }
+    await setCustomHolidays({ ...customHolidays, [date]: name.trim() });
+    setEditing(null);
+  };
+  const handleDelete = async (date) => {
+    const ok = await dialog.confirm({ title: '休業日削除', message: `「${customHolidays[date]}」を削除します。`, confirmText: '削除' });
+    if (!ok) return;
+    const next = { ...customHolidays };
+    delete next[date];
+    await setCustomHolidays(next);
+  };
+
+  return (
+    <div className="px-3 pt-3 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold flex items-center gap-2 text-zinc-100">
+          <Icon name="CalendarHeart" className="w-5 h-5 text-rose-400" />祝祭日・休業日
+        </h2>
+        <button onClick={() => setEditing({ date: '', name: '' })}
+          className="flex items-center gap-1 px-3 py-2 bg-amber-600 text-white text-sm font-medium rounded-full hover:bg-amber-700 shadow-md">
+          <Icon name="Plus" className="w-4 h-4" />会社休業日
+        </button>
+      </div>
+
+      <section className="bg-zinc-800 border border-zinc-700 rounded-xl p-3">
+        <div className="flex items-center gap-2 mb-2 text-xs text-zinc-400">
+          <Icon name="HelpCircle" className="w-3.5 h-3.5" />
+          <span>祝日（赤）はシステム内蔵で編集不可。会社独自の休業日（青）は追加・編集できます</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-zinc-400">年:</span>
+          {[2025, 2026, 2027].map(y => (
+            <button key={y} onClick={() => setFilterYear(y)}
+              className={`px-3 py-1 text-xs font-medium rounded-full ${filterYear === y ? 'bg-amber-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'}`}>
+              {y}年
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {allHolidays.length === 0 ? (
+        <EmptyState icon="CalendarHeart" title="該当データなし" description={`${filterYear}年の祝祭日が見つかりません`} />
+      ) : (
+        <div className="space-y-1.5">
+          {allHolidays.map(h => {
+            const d = parseYmd(h.date);
+            const dow = d.getDay();
+            return (
+              <div key={h.date} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border ${h.type === 'jp' ? 'bg-red-950/15 border-red-900/40' : 'bg-blue-950/15 border-blue-900/40'}`}>
+                <div className={`flex-shrink-0 text-center min-w-[60px] ${dow === 0 ? 'text-red-400' : dow === 6 ? 'text-blue-400' : 'text-zinc-300'}`}>
+                  <div className="text-[10px] font-semibold opacity-70">{d.getFullYear()}/{d.getMonth()+1}</div>
+                  <div className="text-xl font-bold leading-none">{d.getDate()}</div>
+                  <div className="text-[10px] opacity-70">{DOW[dow]}</div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${h.type === 'jp' ? 'bg-red-500/20 text-red-300' : 'bg-blue-500/20 text-blue-300'}`}>
+                      {h.type === 'jp' ? '祝日' : '会社休業'}
+                    </span>
+                    <span className="font-semibold text-sm text-zinc-100 truncate">{h.name}</span>
+                  </div>
+                </div>
+                {h.type === 'custom' && (
+                  <div className="flex gap-1 flex-shrink-0">
+                    <button onClick={() => setEditing({ date: h.date, name: h.name })} className="p-1.5 text-zinc-400 hover:bg-zinc-700 rounded">
+                      <Icon name="Edit2" className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => handleDelete(h.date)} className="p-1.5 text-red-400 hover:bg-red-900/30 rounded">
+                      <Icon name="Trash2" className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {editing && <HolidayEditModal initial={editing} onSave={handleSave} onClose={() => setEditing(null)} />}
+    </div>
+  );
+}
+
+function HolidayEditModal({ initial, onSave, onClose }) {
+  const [date, setDate] = useState(initial.date || '');
+  const [name, setName] = useState(initial.name || '');
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-zinc-800 border border-zinc-700 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl">
+        <div className="flex items-center justify-between p-4 border-b border-zinc-700">
+          <h3 className="font-semibold text-zinc-100">{initial.date ? '休業日編集' : '会社休業日追加'}</h3>
+          <button onClick={onClose} className="p-1.5 hover:bg-zinc-700 rounded-lg"><Icon name="X" className="w-5 h-5 text-zinc-300" /></button>
+        </div>
+        <div className="p-4 space-y-3">
+          <Field label="日付" required>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} disabled={!!initial.date}
+              className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 text-zinc-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm disabled:opacity-50" />
+          </Field>
+          <Field label="休業日の名称" required>
+            <Input value={name} onChange={setName} placeholder="例: 創立記念日、お盆休み" autoFocus />
+          </Field>
+        </div>
+        <div className="p-4 border-t border-zinc-700 flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2 border border-zinc-700 text-zinc-300 rounded-lg text-sm font-medium hover:bg-zinc-700">キャンセル</button>
+          <button onClick={() => onSave(date, name)} className="flex-1 py-2 bg-amber-600 text-white rounded-lg text-sm font-semibold hover:bg-amber-700">
+            <Icon name="Save" className="w-4 h-4 inline mr-1" />保存
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ========== お知らせ ==========
+function AnnouncementsView({ announcements, setAnnouncements }) {
+  const dialog = useDialog();
+  const { isAdmin } = useAuth();
+  const [editing, setEditing] = useState(null);
+
+  const sorted = useMemo(() => [...announcements].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)), [announcements]);
+
+  const handleSave = async (data) => {
+    if (data.id) {
+      await setAnnouncements(announcements.map(a => a.id === data.id ? { ...data, updatedAt: Date.now() } : a));
+    } else {
+      const newItem = { ...data, id: newId(), createdAt: Date.now(), updatedAt: Date.now() };
+      await setAnnouncements([newItem, ...announcements]);
+    }
+    setEditing(null);
+  };
+  const handleDelete = async (a) => {
+    const ok = await dialog.confirm({ title: 'お知らせ削除', message: `「${a.title}」を削除します。`, confirmText: '削除' });
+    if (!ok) return;
+    await setAnnouncements(announcements.filter(x => x.id !== a.id));
+  };
+
+  const formatDate = (ts) => {
+    if (!ts) return '';
+    const d = new Date(ts);
+    return `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  return (
+    <div className="px-3 pt-3 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold flex items-center gap-2 text-zinc-100">
+          <Icon name="Megaphone" className="w-5 h-5 text-amber-400" />お知らせ
+          <span className="text-sm text-zinc-500 font-normal">({announcements.length}件)</span>
+        </h2>
+        {isAdmin && (
+          <button onClick={() => setEditing({ title: '', body: '', pinned: false })}
+            className="flex items-center gap-1 px-3 py-2 bg-amber-600 text-white text-sm font-medium rounded-full hover:bg-amber-700 shadow-md">
+            <Icon name="Plus" className="w-4 h-4" />投稿
+          </button>
+        )}
+      </div>
+
+      {!isAdmin && (
+        <div className="px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-xs text-zinc-400 flex items-center gap-2">
+          <Icon name="Eye" className="w-3.5 h-3.5" />閲覧モードです。お知らせの投稿には管理者ログインが必要です。
+        </div>
+      )}
+
+      {sorted.length === 0 ? (
+        <EmptyState icon="Megaphone" title="お知らせはまだありません" description={isAdmin ? '右上の「投稿」から最初のお知らせを書きましょう。' : '管理者からのお知らせをお待ちください。'} />
+      ) : (
+        <div className="space-y-2">
+          {sorted.map(a => (
+            <article key={a.id} className={`rounded-xl p-4 border ${a.pinned ? 'bg-amber-500/10 border-amber-500/40' : 'bg-zinc-800 border-zinc-700'}`}>
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    {a.pinned && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-500 text-amber-950 text-[10px] font-bold rounded"><Icon name="Pin" className="w-2.5 h-2.5" />重要</span>}
+                    <h3 className="font-bold text-base text-zinc-100">{a.title}</h3>
+                  </div>
+                  <div className="text-[11px] text-zinc-500">投稿: {formatDate(a.createdAt)}{a.updatedAt && a.updatedAt !== a.createdAt && ` ・更新: ${formatDate(a.updatedAt)}`}</div>
+                </div>
+                {isAdmin && (
+                  <div className="flex gap-1 flex-shrink-0">
+                    <button onClick={() => setEditing(a)} className="p-1.5 text-zinc-400 hover:bg-zinc-700 rounded">
+                      <Icon name="Edit2" className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => handleDelete(a)} className="p-1.5 text-red-400 hover:bg-red-900/30 rounded">
+                      <Icon name="Trash2" className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="text-sm text-zinc-200 whitespace-pre-wrap break-words leading-relaxed">{a.body}</div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {editing && isAdmin && (
+        <AnnouncementEditModal initial={editing} onSave={handleSave} onClose={() => setEditing(null)} />
+      )}
+    </div>
+  );
+}
+
+function AnnouncementEditModal({ initial, onSave, onClose }) {
+  const dialog = useDialog();
+  const [form, setForm] = useState({
+    id: initial.id || '',
+    title: initial.title || '',
+    body: initial.body || '',
+    pinned: !!initial.pinned,
+    createdAt: initial.createdAt,
+  });
+  const handleSubmit = async () => {
+    if (!form.title.trim()) { await dialog.alert({ message: 'タイトルを入力してください' }); return; }
+    if (!form.body.trim()) { await dialog.alert({ message: '本文を入力してください' }); return; }
+    onSave({ ...form, title: form.title.trim(), body: form.body.trim() });
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-zinc-800 border border-zinc-700 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-zinc-700">
+          <h3 className="font-semibold text-zinc-100 flex items-center gap-2">
+            <Icon name="Send" className="w-4 h-4 text-amber-400" />
+            {initial.id ? 'お知らせ編集' : '新しいお知らせ'}
+          </h3>
+          <button onClick={onClose} className="p-1.5 hover:bg-zinc-700 rounded-lg"><Icon name="X" className="w-5 h-5 text-zinc-300" /></button>
+        </div>
+        <div className="p-4 space-y-3 overflow-y-auto">
+          <Field label="タイトル" required>
+            <Input value={form.title} onChange={(v) => setForm({ ...form, title: v })} placeholder="例: 今週の連絡事項" autoFocus />
+          </Field>
+          <Field label="本文" required>
+            <textarea value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })}
+              placeholder="お知らせの内容を書いてください。改行も使えます。"
+              rows={8}
+              className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 text-zinc-100 placeholder-zinc-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm resize-y" />
+          </Field>
+          <label className="flex items-center gap-2 cursor-pointer p-2 hover:bg-zinc-700/50 rounded-lg">
+            <input type="checkbox" checked={form.pinned} onChange={(e) => setForm({ ...form, pinned: e.target.checked })}
+              className="w-4 h-4 rounded border-zinc-600 bg-zinc-900" />
+            <Icon name="Pin" className="w-4 h-4 text-amber-400" />
+            <span className="text-sm text-zinc-200">重要マークを付ける（一覧の上部に強調表示）</span>
+          </label>
+        </div>
+        <div className="p-4 border-t border-zinc-700 flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2 border border-zinc-700 text-zinc-300 rounded-lg text-sm font-medium hover:bg-zinc-700">キャンセル</button>
+          <button onClick={handleSubmit} className="flex-1 py-2 bg-amber-600 text-white rounded-lg text-sm font-semibold hover:bg-amber-700">
+            <Icon name="Send" className="w-4 h-4 inline mr-1" />{initial.id ? '更新' : '投稿'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({ icon, title, description }) {
+  return (
+    <div className="text-center py-16 px-4">
+      <div className="inline-flex w-14 h-14 items-center justify-center bg-zinc-800 rounded-2xl mb-3"><Icon name={icon} className="w-7 h-7 text-zinc-500" /></div>
+      <h3 className="font-semibold text-zinc-200">{title}</h3>
+      <p className="text-sm text-zinc-500 mt-1 max-w-sm mx-auto">{description}</p>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+</body>
+</html>
