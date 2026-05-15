@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -576,6 +577,19 @@ function HakoShift() {
   const [customHolidays, setCustomHolidays] = useStorage('customHolidays', {});
   const [announcements, setAnnouncements] = useStorage('announcements', []);
 
+  // 希望休申請の購読
+  const [dayOffRequests, setDayOffRequests] = useState([]);
+  useEffect(() => {
+    if (!authUser) return;
+    const unsub = db.collection('dayOffRequests').onSnapshot(snap => {
+      const list = [];
+      snap.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
+      list.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+      setDayOffRequests(list);
+    }, err => { console.warn('dayOffRequests read error:', err); });
+    return unsub;
+  }, [authUser]);
+
   // 表示中の月から日付配列を生成（月モード用）
   const days = useMemo(() => getDaysInMonth(currentMonth), [currentMonth]);
 
@@ -724,6 +738,9 @@ function HakoShift() {
           {activeTab === 'announcements' && (
             <AnnouncementsView announcements={announcements} setAnnouncements={setAnnouncements} />
           )}
+          {activeTab === 'myDayOffRequest' && (
+            <MyDayOffRequestView dayOffRequests={dayOffRequests} staff={staff} />
+          )}
           {isAdmin && activeTab === 'staff' && (
             <StaffView staff={staff} setStaff={setStaff} shiftTypes={shiftTypes}
               areas={areas} setAreas={setAreas} roles={roles} setRoles={setRoles} teams={teams} />
@@ -736,7 +753,8 @@ function HakoShift() {
           )}
           {isAdmin && activeTab === 'dayOff' && (
             <DayOffView currentMonth={currentMonth} days={days} staff={staff}
-              dayOff={dayOff} setDayOff={setDayOff} teams={teams} />
+              dayOff={dayOff} setDayOff={setDayOff} teams={teams}
+              dayOffRequests={dayOffRequests} />
           )}
           {isAdmin && activeTab === 'aiSettings' && (
             <AiSettingsView aiSettings={aiSettings} setAiSettings={setAiSettings}
@@ -987,11 +1005,12 @@ function SideMenu({ activeTab, onChange, onClose, shiftTypes, onLogout }) {
   const allItems = [
     { id: 'shifts', label: 'シフト表', icon: 'Calendar', adminOnly: false },
     { id: 'announcements', label: 'お知らせ', icon: 'Bell', adminOnly: false },
+    { id: 'myDayOffRequest', label: '希望休を申請', icon: 'CalendarOff', adminOnly: false },
     { id: 'staff', label: 'スタッフ', icon: 'Users', adminOnly: true },
     { id: 'teams', label: '班', icon: 'UsersRound', adminOnly: true },
     { id: 'shiftTypes', label: 'シフト区分', icon: 'Clock', adminOnly: true },
     { id: 'aiSettings', label: 'AI設定', icon: 'Sparkles', adminOnly: true },
-    { id: 'dayOff', label: '希望休', icon: 'CalendarOff', adminOnly: true },
+    { id: 'dayOff', label: '希望休（管理）', icon: 'CalendarCheck', adminOnly: true },
     { id: 'holidays', label: '祝祭日・休業日', icon: 'CalendarHeart', adminOnly: true },
     { id: 'accounts', label: 'アカウント管理', icon: 'UserCog', adminOnly: true },
     { id: 'security', label: 'セキュリティ', icon: 'KeyRound', adminOnly: true },
@@ -2559,13 +2578,72 @@ function ShiftTypeEditModal({ shiftType, onSave, onClose }) {
   );
 }
 
-// ========== 希望休 ==========
-function DayOffView({ currentMonth, days, staff, dayOff, setDayOff, teams }) {
+// ========== 希望休（管理者用） ==========
+function DayOffView({ currentMonth, days, staff, dayOff, setDayOff, teams, dayOffRequests }) {
+  const dialog = useDialog();
+  const { authUser } = useAuth();
   const [selectedStaffId, setSelectedStaffId] = useState(staff[0]?.id || null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterTeamId, setFilterTeamId] = useState('all');
+  const [tab, setTab] = useState('requests'); // 'requests' | 'manual'
+  const [reviewComment, setReviewComment] = useState({});
+
   const teamById = useMemo(() => { const m = {}; teams.forEach(t => m[t.id] = t); return m; }, [teams]);
   useEffect(() => { if (!staff.find(s => s.id === selectedStaffId) && staff.length > 0) setSelectedStaffId(staff[0].id); }, [staff, selectedStaffId]);
+
+  const pendingRequests = useMemo(() => (dayOffRequests || []).filter(r => r.status === 'pending'), [dayOffRequests]);
+  const processedRequests = useMemo(() => (dayOffRequests || []).filter(r => r.status !== 'pending').slice(0, 30), [dayOffRequests]);
+
+  const formatTs = (ts) => {
+    if (!ts) return '';
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return `${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const handleApprove = async (req) => {
+    try {
+      // 申請者のスタッフIDを推定
+      const staffId = req.staffId || staff.find(s => s.name === req.staffName)?.id;
+      if (staffId) {
+        // dayOffに反映
+        const current = dayOff[staffId] || [];
+        if (!current.includes(req.date)) {
+          await setDayOff({ ...dayOff, [staffId]: [...current, req.date] });
+        }
+      }
+      // 申請をapprovedに
+      await db.collection('dayOffRequests').doc(req.id).update({
+        status: 'approved',
+        reviewedBy: authUser.uid,
+        reviewedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        reviewComment: reviewComment[req.id] || '',
+      });
+      setReviewComment(p => { const n = { ...p }; delete n[req.id]; return n; });
+    } catch (e) {
+      await dialog.alert({ title: 'エラー', message: '承認処理に失敗しました: ' + e.message });
+    }
+  };
+
+  const handleReject = async (req) => {
+    const ok = await dialog.confirm({
+      title: '申請を却下しますか？',
+      message: `${req.staffName || req.userDisplayName}さんの ${req.date} の希望休申請を却下します。`,
+      confirmText: '却下する', danger: true,
+    });
+    if (!ok) return;
+    try {
+      await db.collection('dayOffRequests').doc(req.id).update({
+        status: 'rejected',
+        reviewedBy: authUser.uid,
+        reviewedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        reviewComment: reviewComment[req.id] || '',
+      });
+      setReviewComment(p => { const n = { ...p }; delete n[req.id]; return n; });
+    } catch (e) {
+      await dialog.alert({ title: 'エラー', message: '却下処理に失敗しました: ' + e.message });
+    }
+  };
+
   const filteredStaff = useMemo(() => {
     let list = staff;
     if (filterTeamId === 'none') list = list.filter(s => !s.teamId || !teamById[s.teamId]);
@@ -2585,7 +2663,121 @@ function DayOffView({ currentMonth, days, staff, dayOff, setDayOff, teams }) {
 
   return (
     <div className="px-3 pt-3 space-y-3">
-      <h2 className="text-lg font-semibold flex items-center gap-2 text-zinc-100"><Icon name="CalendarOff" className="w-5 h-5" />希望休 <span className="text-sm text-zinc-500 font-normal">{monthLabel(currentMonth)}</span></h2>
+      <h2 className="text-lg font-semibold flex items-center gap-2 text-zinc-100">
+        <Icon name="CalendarOff" className="w-5 h-5" />希望休（管理）
+        {pendingRequests.length > 0 && (
+          <span className="text-xs px-2 py-0.5 bg-amber-500 text-amber-950 rounded-full font-bold">
+            {pendingRequests.length}件の承認待ち
+          </span>
+        )}
+      </h2>
+
+      {/* タブ切替 */}
+      <div className="flex bg-zinc-800 rounded-lg p-1">
+        <button onClick={() => setTab('requests')}
+          className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors flex items-center justify-center gap-1.5 ${tab === 'requests' ? 'bg-amber-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}>
+          <Icon name="Bell" className="w-3.5 h-3.5" />
+          申請承認
+          {pendingRequests.length > 0 && <span className="text-[10px] bg-amber-300 text-amber-900 px-1.5 py-0.5 rounded-full font-bold">{pendingRequests.length}</span>}
+        </button>
+        <button onClick={() => setTab('manual')}
+          className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors flex items-center justify-center gap-1.5 ${tab === 'manual' ? 'bg-amber-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}>
+          <Icon name="Edit2" className="w-3.5 h-3.5" />
+          手動編集 <span className="text-xs text-zinc-500 font-normal">({monthLabel(currentMonth)})</span>
+        </button>
+      </div>
+
+      {tab === 'requests' && (
+        <Fragment>
+          {pendingRequests.length === 0 && processedRequests.length === 0 ? (
+            <EmptyState icon="Bell" title="申請はまだありません" description="スタッフから希望休が申請されると、ここに表示されます。" />
+          ) : (
+            <Fragment>
+              {pendingRequests.length > 0 && (
+                <section>
+                  <h3 className="text-sm font-bold text-amber-300 mb-2 flex items-center gap-1.5">
+                    <Icon name="Clock" className="w-4 h-4" />承認待ち（{pendingRequests.length}件）
+                  </h3>
+                  <div className="space-y-2">
+                    {pendingRequests.map(req => {
+                      const d = parseYmd(req.date);
+                      const dow = d.getDay();
+                      return (
+                        <div key={req.id} className="bg-amber-500/10 border border-amber-500/40 rounded-xl p-3">
+                          <div className="flex items-start gap-3">
+                            <div className={`flex-shrink-0 text-center min-w-[60px] ${dow === 0 ? 'text-red-400' : dow === 6 ? 'text-blue-400' : 'text-zinc-300'}`}>
+                              <div className="text-[10px] opacity-70">{d.getMonth()+1}月</div>
+                              <div className="text-2xl font-bold leading-none">{d.getDate()}</div>
+                              <div className="text-[10px] opacity-70">{DOW[dow]}</div>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-semibold text-zinc-100">{req.staffName || req.userDisplayName}</div>
+                              <div className="text-[10px] text-zinc-400">{req.userEmail}</div>
+                              {req.reason && <div className="text-sm text-zinc-200 mt-1 bg-zinc-900/50 rounded p-1.5">{req.reason}</div>}
+                              <div className="text-[10px] text-zinc-500 mt-1">申請: {formatTs(req.createdAt)}</div>
+                            </div>
+                          </div>
+                          <div className="mt-2 pt-2 border-t border-amber-500/20 space-y-2">
+                            <input type="text" value={reviewComment[req.id] || ''} 
+                              onChange={(e) => setReviewComment({ ...reviewComment, [req.id]: e.target.value })}
+                              placeholder="コメント（任意）"
+                              className="w-full px-2 py-1.5 text-xs bg-zinc-900 border border-zinc-700 text-zinc-100 placeholder-zinc-500 rounded focus:outline-none focus:ring-1 focus:ring-amber-500" />
+                            <div className="flex gap-1.5">
+                              <button onClick={() => handleApprove(req)}
+                                className="flex-1 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded flex items-center justify-center gap-1">
+                                <Icon name="Check" className="w-3.5 h-3.5" />承認
+                              </button>
+                              <button onClick={() => handleReject(req)}
+                                className="flex-1 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded flex items-center justify-center gap-1">
+                                <Icon name="X" className="w-3.5 h-3.5" />却下
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+              {processedRequests.length > 0 && (
+                <section>
+                  <h3 className="text-sm font-bold text-zinc-400 mb-2 flex items-center gap-1.5">
+                    <Icon name="Check" className="w-4 h-4" />処理済み（直近{processedRequests.length}件）
+                  </h3>
+                  <div className="space-y-1.5">
+                    {processedRequests.map(req => {
+                      const d = parseYmd(req.date);
+                      const dow = d.getDay();
+                      return (
+                        <div key={req.id} className={`bg-zinc-800 border rounded-lg p-2 flex items-center gap-2 ${req.status === 'approved' ? 'border-green-500/30' : 'border-red-500/30'}`}>
+                          <div className={`flex-shrink-0 text-center min-w-[48px] ${dow === 0 ? 'text-red-400' : dow === 6 ? 'text-blue-400' : 'text-zinc-300'}`}>
+                            <div className="text-sm font-bold">{d.getMonth()+1}/{d.getDate()}</div>
+                            <div className="text-[10px] opacity-70">{DOW[dow]}</div>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-sm text-zinc-100">{req.staffName || req.userDisplayName}</span>
+                              {req.status === 'approved' ? (
+                                <span className="text-[10px] px-1.5 py-0.5 bg-green-500/20 text-green-300 rounded font-bold">承認</span>
+                              ) : (
+                                <span className="text-[10px] px-1.5 py-0.5 bg-red-500/20 text-red-300 rounded font-bold">却下</span>
+                              )}
+                            </div>
+                            {req.reason && <div className="text-[11px] text-zinc-400 truncate">{req.reason}</div>}
+                          </div>
+                          <div className="text-[10px] text-zinc-500">{formatTs(req.reviewedAt)}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+            </Fragment>
+          )}
+        </Fragment>
+      )}
+
+      {tab === 'manual' && (<Fragment>
       {teams.length > 0 && <TeamFilter teams={teams} selectedTeamId={filterTeamId} setSelectedTeamId={setFilterTeamId} />}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="bg-zinc-800 border border-zinc-700 rounded-xl overflow-hidden md:col-span-1">
@@ -2658,6 +2850,7 @@ function DayOffView({ currentMonth, days, staff, dayOff, setDayOff, teams }) {
           ) : <div className="text-center text-zinc-500 py-12 text-sm">スタッフを選択してください</div>}
         </div>
       </div>
+      </Fragment>)}
     </div>
   );
 }
@@ -3048,6 +3241,27 @@ function AccountsView({ allUsers, currentUserId }) {
     await updateUser(user.id, { role: newRole });
   };
 
+  // パスワードリセットメール送信
+  const sendPasswordReset = async (user) => {
+    if (!user.email) {
+      await dialog.alert({ message: 'このアカウントにはメールアドレスが登録されていません。' });
+      return;
+    }
+    const ok = await dialog.confirm({
+      title: 'パスワードリセットメール送信',
+      message: `${user.displayName || user.email} さん\n（${user.email}）\n\n宛にパスワード再設定メールを送信します。\nよろしいですか？`,
+      confirmText: '送信する',
+      danger: false,
+    });
+    if (!ok) return;
+    try {
+      await auth.sendPasswordResetEmail(user.email);
+      await dialog.alert({ title: '送信完了', message: `${user.email} 宛に再設定メールを送信しました。\n本人にメール確認を依頼してください。` });
+    } catch (e) {
+      await dialog.alert({ title: 'エラー', message: 'メール送信に失敗しました: ' + e.message });
+    }
+  };
+
   const getRoleLabel = (role) => ({ admin: '管理者', editor: '編集者', viewer: '閲覧者' }[role] || '不明');
   const getRoleColor = (role) => ({
     admin: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
@@ -3142,6 +3356,11 @@ function AccountsView({ allUsers, currentUserId }) {
                   閲覧者
                 </button>
               </div>
+              {/* パスワードリセットメール */}
+              <button onClick={() => sendPasswordReset(u)} disabled={!u.email}
+                className="mt-1.5 w-full text-[11px] py-1.5 rounded font-medium bg-zinc-700/50 text-zinc-400 hover:bg-blue-500/20 hover:text-blue-300 disabled:opacity-40 flex items-center justify-center gap-1">
+                <Icon name="Mail" className="w-3 h-3" />パスワード再設定メールを送信
+              </button>
             </div>
           );
         })}
@@ -3259,6 +3478,204 @@ function AccountEditModal({ user, onSave, onClose }) {
           <button onClick={onClose} className="flex-1 py-2 border border-zinc-700 text-zinc-300 rounded-lg text-sm font-medium hover:bg-zinc-700">キャンセル</button>
           <button onClick={handleSubmit} className="flex-1 py-2 bg-amber-600 text-white rounded-lg text-sm font-semibold hover:bg-amber-700">
             <Icon name="Save" className="w-4 h-4 inline mr-1" />保存
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ========== スタッフ向け希望休申請 ==========
+function MyDayOffRequestView({ dayOffRequests, staff }) {
+  const dialog = useDialog();
+  const { authUser, userDoc } = useAuth();
+  const [showForm, setShowForm] = useState(false);
+
+  // 自分の申請のみ
+  const myRequests = useMemo(() => dayOffRequests.filter(r => r.userId === authUser.uid), [dayOffRequests, authUser.uid]);
+  const pendingCount = myRequests.filter(r => r.status === 'pending').length;
+  const approvedCount = myRequests.filter(r => r.status === 'approved').length;
+  const rejectedCount = myRequests.filter(r => r.status === 'rejected').length;
+
+  // 自分とスタッフリストの紐付け（任意：表示名一致など）
+  const myStaff = useMemo(() => {
+    return staff.find(s => s.linkedUserId === authUser.uid) 
+        || staff.find(s => s.name === userDoc?.displayName);
+  }, [staff, userDoc, authUser.uid]);
+
+  const handleCancel = async (req) => {
+    const ok = await dialog.confirm({
+      title: '申請取消',
+      message: `${req.date} の希望休申請を取り消します。よろしいですか？`,
+      confirmText: '取消する',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await db.collection('dayOffRequests').doc(req.id).delete();
+    } catch (e) {
+      await dialog.alert({ title: 'エラー', message: '取消に失敗しました: ' + e.message });
+    }
+  };
+
+  const formatTs = (ts) => {
+    if (!ts) return '';
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const statusBadge = (status) => {
+    if (status === 'pending') return <span className="text-[10px] px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded-full font-bold">承認待ち</span>;
+    if (status === 'approved') return <span className="text-[10px] px-2 py-0.5 bg-green-500/20 text-green-300 rounded-full font-bold flex items-center gap-0.5"><Icon name="Check" className="w-2.5 h-2.5" />承認</span>;
+    if (status === 'rejected') return <span className="text-[10px] px-2 py-0.5 bg-red-500/20 text-red-300 rounded-full font-bold flex items-center gap-0.5"><Icon name="X" className="w-2.5 h-2.5" />却下</span>;
+    return null;
+  };
+
+  return (
+    <div className="px-3 pt-3 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold flex items-center gap-2 text-zinc-100">
+          <Icon name="CalendarOff" className="w-5 h-5" />希望休を申請
+        </h2>
+        <button onClick={() => setShowForm(true)}
+          className="flex items-center gap-1 px-3 py-2 bg-amber-600 text-white text-sm font-medium rounded-full hover:bg-amber-700 shadow-md">
+          <Icon name="Plus" className="w-4 h-4" />新規申請
+        </button>
+      </div>
+
+      {/* サマリー */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2 text-center">
+          <div className="text-2xl font-bold text-amber-300">{pendingCount}</div>
+          <div className="text-[10px] text-amber-200/80">承認待ち</div>
+        </div>
+        <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-2 text-center">
+          <div className="text-2xl font-bold text-green-300">{approvedCount}</div>
+          <div className="text-[10px] text-green-200/80">承認済み</div>
+        </div>
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2 text-center">
+          <div className="text-2xl font-bold text-red-300">{rejectedCount}</div>
+          <div className="text-[10px] text-red-200/80">却下</div>
+        </div>
+      </div>
+
+      <div className="px-3 py-2 bg-blue-500/10 border border-blue-500/30 rounded-lg text-xs text-blue-200 flex items-start gap-2">
+        <Icon name="HelpCircle" className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+        <div>
+          休みたい日と理由を入力して申請してください。<br />
+          管理者が承認すると、シフト表に反映されます。
+        </div>
+      </div>
+
+      {/* 申請一覧 */}
+      {myRequests.length === 0 ? (
+        <EmptyState icon="CalendarOff" title="申請はまだありません" description="右上の「新規申請」から希望休を出してください。" />
+      ) : (
+        <div className="space-y-2">
+          {myRequests.map(req => {
+            const d = parseYmd(req.date);
+            const dow = d.getDay();
+            return (
+              <div key={req.id} className={`bg-zinc-800 border rounded-xl p-3 ${req.status === 'pending' ? 'border-amber-500/40' : req.status === 'approved' ? 'border-green-500/40' : 'border-red-500/40'}`}>
+                <div className="flex items-center gap-3">
+                  <div className={`flex-shrink-0 text-center min-w-[60px] ${dow === 0 ? 'text-red-400' : dow === 6 ? 'text-blue-400' : 'text-zinc-300'}`}>
+                    <div className="text-[10px] opacity-70">{d.getFullYear()}/{d.getMonth()+1}</div>
+                    <div className="text-xl font-bold leading-none">{d.getDate()}</div>
+                    <div className="text-[10px] opacity-70">{DOW[dow]}</div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">{statusBadge(req.status)}</div>
+                    {req.reason && <div className="text-sm text-zinc-200 mb-1">{req.reason}</div>}
+                    <div className="text-[10px] text-zinc-500">申請: {formatTs(req.createdAt)}</div>
+                    {req.reviewedAt && <div className="text-[10px] text-zinc-500">処理: {formatTs(req.reviewedAt)}</div>}
+                    {req.reviewComment && <div className="text-[10px] text-zinc-400 mt-1 italic">「{req.reviewComment}」</div>}
+                  </div>
+                  {req.status === 'pending' && (
+                    <button onClick={() => handleCancel(req)} className="p-1.5 text-red-400 hover:bg-red-900/30 rounded flex-shrink-0">
+                      <Icon name="Trash2" className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {showForm && (
+        <DayOffRequestFormModal
+          authUser={authUser} userDoc={userDoc} myStaff={myStaff}
+          existingDates={myRequests.filter(r => r.status !== 'rejected').map(r => r.date)}
+          onClose={() => setShowForm(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function DayOffRequestFormModal({ authUser, userDoc, myStaff, existingDates, onClose }) {
+  const dialog = useDialog();
+  const [date, setDate] = useState('');
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!date) { await dialog.alert({ message: '日付を入力してください' }); return; }
+    if (existingDates.includes(date)) { await dialog.alert({ message: 'その日付の申請はすでに存在します' }); return; }
+    setSubmitting(true);
+    try {
+      await db.collection('dayOffRequests').add({
+        userId: authUser.uid,
+        userDisplayName: userDoc?.displayName || authUser.email,
+        userEmail: authUser.email,
+        staffId: myStaff?.id || null,
+        staffName: myStaff?.name || userDoc?.displayName || '',
+        date: date,
+        reason: reason.trim(),
+        status: 'pending',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      onClose();
+    } catch (e) {
+      setSubmitting(false);
+      await dialog.alert({ title: 'エラー', message: '申請送信に失敗しました: ' + e.message });
+    }
+  };
+
+  // 今日以降の日付のみ
+  const today = ymd(new Date());
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-zinc-800 border border-zinc-700 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl">
+        <div className="flex items-center justify-between p-4 border-b border-zinc-700">
+          <h3 className="font-semibold text-zinc-100 flex items-center gap-2">
+            <Icon name="CalendarOff" className="w-4 h-4 text-red-400" />希望休を申請
+          </h3>
+          <button onClick={onClose} className="p-1.5 hover:bg-zinc-700 rounded-lg"><Icon name="X" className="w-5 h-5 text-zinc-300" /></button>
+        </div>
+        <div className="p-4 space-y-3">
+          <Field label="希望休の日付" required>
+            <input type="date" value={date} min={today} onChange={(e) => setDate(e.target.value)}
+              className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 text-zinc-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm" />
+          </Field>
+          <Field label="理由（任意）">
+            <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3}
+              placeholder="例: 通院のため、家族の用事 など"
+              className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 text-zinc-100 placeholder-zinc-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm resize-y" />
+          </Field>
+          {!myStaff && (
+            <div className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded p-2">
+              ⚠️ あなたのアカウントは、まだスタッフリストと紐付いていません。<br />
+              申請は受付できますが、管理者が承認後の処理を判断します。
+            </div>
+          )}
+        </div>
+        <div className="p-4 border-t border-zinc-700 flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2 border border-zinc-700 text-zinc-300 rounded-lg text-sm font-medium hover:bg-zinc-700">キャンセル</button>
+          <button onClick={handleSubmit} disabled={submitting}
+            className="flex-1 py-2 bg-amber-600 text-white rounded-lg text-sm font-semibold hover:bg-amber-700 disabled:opacity-60">
+            <Icon name="Send" className="w-4 h-4 inline mr-1" />{submitting ? '送信中...' : '申請する'}
           </button>
         </div>
       </div>
