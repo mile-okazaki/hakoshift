@@ -157,6 +157,32 @@
   _authFn.GoogleAuthProvider = function() { return { providerId: 'google.com' }; };
   const _fsFn = function() { return db; };
   _fsFn.FieldValue = { serverTimestamp: () => new Date() };
+  _fsFn.Timestamp = {
+    fromDate: (d) => ({
+      toDate: () => d,
+      seconds: Math.floor(d.getTime() / 1000),
+      nanoseconds: 0,
+      toMillis: () => d.getTime(),
+    }),
+    now: () => {
+      const d = new Date();
+      return {
+        toDate: () => d,
+        seconds: Math.floor(d.getTime() / 1000),
+        nanoseconds: 0,
+        toMillis: () => d.getTime(),
+      };
+    },
+    fromMillis: (ms) => {
+      const d = new Date(ms);
+      return {
+        toDate: () => d,
+        seconds: Math.floor(ms / 1000),
+        nanoseconds: 0,
+        toMillis: () => ms,
+      };
+    },
+  };
   window.firebase = {
     initializeApp: () => ({ name: '[DEFAULT]' }),
     auth: _authFn,
