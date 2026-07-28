@@ -1,1 +1,129 @@
 # hakoshift
+
+配達チームのための業務アプリ集。単一HTMLファイル + Firebase 構成で、サーバー不要でホスティングできます。
+
+| アプリ | ファイル | 説明 |
+|---|---|---|
+| 🚚 ハコシフ | `index.html` | 配達シフト管理（本番版） |
+| 🚚 ハコシフ【デモ】 | `index-preview.html` | ログイン不要のデモ版 |
+| 🎓 ハコマナ | `learn.html` | 研修・教育プラットフォーム（本番版） |
+| 🎓 ハコマナ【デモ】 | `learn-preview.html` | ログイン不要のデモ版（サンプルデータ入り） |
+
+---
+
+## 🎓 ハコマナ — 研修・教育プラットフォーム
+
+オンライン講座プラットフォーム「オンクラス」を参考にした、社内研修・教育用のプラットフォームです。
+
+### 主な機能
+
+**講師（管理者）**
+- コース作成（アイコン・カラー・公開/非公開・招待コード）
+- 章（チャプター）→ レッスンのカリキュラム構成、並び替え
+- レッスン編集：テキスト記入（見出し・箇条書き・強調・自動リンク）／YouTube・Vimeo動画埋め込み／外部リンク／ファイル添付（Firebase Storage）
+- **理解度テスト**：単一選択・複数選択・○×問題、合格ライン設定、解説、自動採点
+- **課題**：受講生のテキスト提出にフィードバック
+- **進捗管理**：受講生×レッスンの進捗マトリクス、テストのベストスコア、CSV出力
+- 受講生管理（講師権限の付与/剥奪、個人別の学習状況）
+- お知らせ配信（ピン留め対応）
+- 受講生の質問へのコメント返信
+
+**受講生**
+- コース受講（公開コースへの参加／招待コードでの参加）
+- レッスン学習と完了チェック、進捗バー表示
+- 理解度テスト受験（合格でレッスン自動完了、再挑戦可）
+- 課題のテキスト提出・講師フィードバック閲覧
+- レッスンごとの質問・コメント投稿
+- 学習状況ページで自分の進捗・テスト結果を確認
+
+### ロールについて
+
+- **最初に登録したユーザーが自動的に講師（管理者）**になります
+- 2人目以降は受講生として登録されます
+- 講師は「受講生」ページから他のユーザーに講師権限を付与できます
+
+### デモ版の使い方
+
+`learn-preview.html` をブラウザで開くだけで動きます（ログイン不要）。
+- サンプルの研修コース・受講生・テスト結果・課題提出が入っています
+- 上部バーの「視点切替」で講師⇔受講生の画面を切り替えられます
+- データは端末のlocalStorageにのみ保存され、「ログアウト」で初期状態に戻ります
+
+### 本番版のセットアップ
+
+`learn.html` はハコシフと同じFirebaseプロジェクトを使用し、`edu_` プレフィックスのコレクションでデータを分離しています。デプロイ前に以下の設定が必要です。
+
+#### 1. Firestore セキュリティルール
+
+Firebase Console → Firestore Database → ルール に、**既存のハコシフのルールに追記**する形で以下を追加してください。
+
+```
+    // ===== ハコマナ（教育プラットフォーム） =====
+    function eduSignedIn() { return request.auth != null; }
+    function isEduInstructor() {
+      return eduSignedIn() &&
+        get(/databases/$(database)/documents/edu_users/$(request.auth.uid)).data.role == 'instructor';
+    }
+    match /edu_users/{uid} {
+      allow read: if eduSignedIn();
+      allow create: if eduSignedIn() && request.auth.uid == uid;
+      allow update: if eduSignedIn() && (request.auth.uid == uid || isEduInstructor());
+    }
+    match /edu_courses/{id} {
+      allow read: if eduSignedIn();
+      allow write: if isEduInstructor();
+    }
+    match /edu_lessons/{id} {
+      allow read: if eduSignedIn();
+      allow write: if isEduInstructor();
+    }
+    match /edu_announcements/{id} {
+      allow read: if eduSignedIn();
+      allow write: if isEduInstructor();
+    }
+    match /edu_enrollments/{id} {
+      allow read: if eduSignedIn();
+      allow create, update: if eduSignedIn() && (request.resource.data.uid == request.auth.uid || isEduInstructor());
+      allow delete: if isEduInstructor();
+    }
+    match /edu_quiz_results/{id} {
+      allow read: if eduSignedIn();
+      allow create, update: if eduSignedIn() && (request.resource.data.uid == request.auth.uid || isEduInstructor());
+      allow delete: if isEduInstructor();
+    }
+    match /edu_submissions/{id} {
+      allow read: if eduSignedIn();
+      allow create, update: if eduSignedIn() && (request.resource.data.uid == request.auth.uid || isEduInstructor());
+      allow delete: if isEduInstructor();
+    }
+    match /edu_comments/{id} {
+      allow read: if eduSignedIn();
+      allow create: if eduSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow delete: if eduSignedIn() && (resource.data.uid == request.auth.uid || isEduInstructor());
+    }
+```
+
+> メモ: ログインユーザーであれば読み取り可能な「社内利用向け」のルールです。社外公開する場合はより厳密なルール設計を検討してください。
+
+#### 2. Firebase Storage（ファイル添付を使う場合）
+
+Firebase Console → Storage を有効化し、ルールに以下を追加してください。
+
+```
+    match /edu_uploads/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.resource.size < 20 * 1024 * 1024;
+    }
+```
+
+Storageを使わない場合も、リンクブロック（Google ドライブ等のURL）で資料共有ができます。
+
+#### 3. Authentication
+
+ハコシフで設定済みであれば追加設定は不要です（メール/パスワード認証とGoogleログインを使用）。
+
+### 技術構成
+
+- React 18（UMD）+ Babel Standalone 7 + Tailwind CSS（CDN）
+- Firebase compat SDK 10.14.1（Auth / Firestore / Storage）
+- ビルド不要・単一HTMLファイル。GitHub Pages等の静的ホスティングにそのまま配置できます
