@@ -113,6 +113,17 @@ function fmtSize(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+// 受講期限の残り日数計算（日付単位で比較: 期限当日=あと0日、翌日から超過）
+function deadlineInfo(course) {
+  if (!course || !course.deadline) return null;
+  const dl = new Date(course.deadline + 'T00:00:00');
+  if (isNaN(dl.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((dl.getTime() - today.getTime()) / 86400000);
+  return { date: dl, days, overdue: days < 0 };
+}
+
 // 動画URL → 埋め込みURL変換（YouTube / Vimeo対応）
 function toEmbedUrl(url) {
   if (!url) return null;
@@ -500,11 +511,14 @@ function AppProvider({ children }) {
     if (!authUser) return;
     const id = eid(authUser.uid, courseId);
     const en = enrollments.find((x) => x.uid === authUser.uid && x.courseId === courseId);
+    const d = new Date();
+    const todayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     await db.collection(COL.enrollments).doc(id).set({
       uid: authUser.uid,
       courseId,
       joinedAt: (en && en.joinedAt) || Date.now(),
       completedLessons: (en && en.completedLessons) || {},
+      activityDays: { ...((en && en.activityDays) || {}), [todayKey]: true },
       lastActivityAt: Date.now(),
       ...patch,
     });
@@ -523,12 +537,13 @@ function AppProvider({ children }) {
       await db.collection(COL.users).doc(uid).set({ role }, { merge: true });
     },
 
-    async createCourse({ title, description, emoji, color, published }) {
+    async createCourse({ title, description, emoji, color, published, certificateEnabled, deadline }) {
       const id = genId('c');
       const inviteCode = Math.random().toString(36).slice(2, 8).toUpperCase();
       await db.collection(COL.courses).doc(id).set({
         title, description: description || '', emoji: emoji || '📘', color: color || '#4f46e5',
-        published: !!published, inviteCode, chapters: [],
+        published: !!published, certificateEnabled: !!certificateEnabled, deadline: deadline || null,
+        inviteCode, chapters: [],
         createdBy: authUser ? authUser.uid : '', createdAt: Date.now(), updatedAt: Date.now(),
       });
       return id;
@@ -619,8 +634,12 @@ function AppProvider({ children }) {
         attempts: ((prev && prev.attempts) || 0) + 1,
         lastScore: score, bestScore,
         passed: !!((prev && prev.passed) || passed),
+        firstAttemptAt: (prev && prev.firstAttemptAt) || Date.now(),
         updatedAt: Date.now(),
       });
+      if (!passed) {
+        await touchEnrollment(lesson.courseId, {});
+      }
       if (passed) {
         const en = enrollments.find((x) => x.uid === authUser.uid && x.courseId === lesson.courseId);
         const completed = { ...((en && en.completedLessons) || {}) };
@@ -658,6 +677,7 @@ function AppProvider({ children }) {
       await db.collection(COL.submissions).doc(id).set({
         uid: authUser.uid, lessonId: lesson.id, courseId: lesson.courseId,
         text, submittedAt: Date.now(),
+        firstSubmittedAt: (prev && prev.firstSubmittedAt) || Date.now(),
         feedback: (prev && prev.feedback) || null,
       });
       await touchEnrollment(lesson.courseId, {});
@@ -1066,6 +1086,21 @@ function AnnouncementList({ manageable }) {
   const [editing, setEditing] = useState(null); // null | 'new' | announcement
   const [deleting, setDeleting] = useState(null);
   const [showAll, setShowAll] = useState(false);
+  const [lastRead] = useState(() => { try { return Number(localStorage.getItem('hakomana:announcements-read') || 0); } catch (e) { return 0; } });
+  const announcementsRef = useRef(announcements);
+  announcementsRef.current = announcements;
+  // 既読化は「実際に表示された後」＝アンマウント時に、実データの最大投稿時刻で記録する
+  useEffect(() => {
+    return () => {
+      try {
+        const list = announcementsRef.current || [];
+        if (!list.length) return;
+        const maxTs = Math.max(...list.map((a) => (tsToDate(a.createdAt) || new Date(0)).getTime()));
+        const prev = Number(localStorage.getItem('hakomana:announcements-read') || 0);
+        if (maxTs > prev) localStorage.setItem('hakomana:announcements-read', String(maxTs));
+      } catch (e) {}
+    };
+  }, []);
 
   const sorted = useMemo(() => [...announcements].sort((a, b) => {
     if (!!b.pinned !== !!a.pinned) return b.pinned ? 1 : -1;
@@ -1096,6 +1131,7 @@ function AnnouncementList({ manageable }) {
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {a.pinned && <Icon name="Pin" size={13} className="text-amber-500 shrink-0" />}
                       <span className="font-bold text-sm text-slate-800">{a.title}</span>
+                      {(tsToDate(a.createdAt)?.getTime() || 0) > lastRead && <Badge tone="indigo">NEW</Badge>}
                     </div>
                     <p className="text-sm text-slate-600 mt-1 whitespace-pre-wrap leading-relaxed">{a.body}</p>
                     <div className="text-[11px] text-slate-400 mt-1.5">{author ? author.displayName : ''}・{fmtRelative(a.createdAt)}</div>
@@ -1215,6 +1251,8 @@ function StudentDashboard() {
         <StatCard icon="GraduationCap" label="修了コース" value={completedCourses} tone="indigo" />
       </div>
 
+      <StreakCard />
+
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm">
         <div className="flex items-center justify-between px-5 pt-4 pb-2">
           <h2 className="font-bold text-slate-900 flex items-center gap-2"><Icon name="BookOpen" size={17} className="text-indigo-500" />受講中のコース</h2>
@@ -1263,6 +1301,67 @@ function StudentDashboard() {
 
       <AnnouncementList manageable={false} />
     </>
+  );
+}
+
+// 連続学習ストリーク（受講生ダッシュボード）
+function StreakCard() {
+  const { authUser, enrollments, quizResults, submissions } = useApp();
+  const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  // 日付が変わったら自動で再計算（0時跨ぎ対策）
+  const [todayKey, setTodayKey] = useState(() => dayKey(new Date()));
+  useEffect(() => {
+    const t = setInterval(() => setTodayKey(dayKey(new Date())), 60000);
+    return () => clearInterval(t);
+  }, []);
+  const days = useMemo(() => {
+    const s = new Set();
+    const add = (ts) => { const d = tsToDate(ts); if (d) s.add(dayKey(d)); };
+    enrollments.filter((e) => e.uid === authUser.uid).forEach((en) => {
+      Object.keys(en.activityDays || {}).forEach((k) => s.add(k));
+      Object.values(en.completedLessons || {}).forEach(add);
+      if (en.lastActivityAt) add(en.lastActivityAt);
+    });
+    quizResults.filter((r) => r.uid === authUser.uid).forEach((r) => { add(r.updatedAt); add(r.firstAttemptAt); });
+    submissions.filter((s2) => s2.uid === authUser.uid).forEach((s2) => { add(s2.submittedAt); add(s2.firstSubmittedAt); });
+    return s;
+  }, [enrollments, quizResults, submissions, authUser.uid, todayKey]);
+
+  let streak = 0;
+  const cursor = new Date();
+  if (!days.has(dayKey(cursor))) cursor.setDate(cursor.getDate() - 1);
+  while (days.has(dayKey(cursor))) { streak++; cursor.setDate(cursor.getDate() - 1); }
+
+  const WD = ['日', '月', '火', '水', '木', '金', '土'];
+  const week = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    week.push({ key: dayKey(d), label: WD[d.getDay()], done: days.has(dayKey(d)), today: i === 0 });
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center justify-between gap-4">
+      <div>
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">🔥</span>
+          <span className="text-2xl font-bold text-slate-900">{streak}<span className="text-sm font-bold text-slate-500 ml-1">日連続</span></span>
+        </div>
+        <div className="text-xs text-slate-400 mt-1">学習した日数 合計{days.size}日</div>
+      </div>
+      <div className="flex gap-1.5 sm:gap-2.5">
+        {week.map((d) => (
+          <div key={d.key} className="flex flex-col items-center gap-1">
+            <span className={`text-[10px] font-bold ${d.today ? 'text-indigo-600' : 'text-slate-400'}`}>{d.label}</span>
+            <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center ${
+              d.done ? 'bg-emerald-500 text-white' : d.today ? 'bg-slate-100 border-2 border-dashed border-slate-300' : 'bg-slate-100'
+            }`}>
+              {d.done && <Icon name="Check" size={13} strokeWidth={3} />}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1348,6 +1447,8 @@ function CourseModal({ course, onClose, onSave }) {
   const [emoji, setEmoji] = useState(course ? course.emoji : '📘');
   const [color, setColor] = useState(course ? course.color : '#4f46e5');
   const [published, setPublished] = useState(course ? !!course.published : false);
+  const [certificateEnabled, setCertificateEnabled] = useState(course ? !!course.certificateEnabled : true);
+  const [deadline, setDeadline] = useState(course && course.deadline ? course.deadline : '');
   const [busy, setBusy] = useState(false);
   return (
     <Modal title={course ? 'コースを編集' : '新しいコースを作成'} onClose={onClose} footer={
@@ -1355,7 +1456,7 @@ function CourseModal({ course, onClose, onSave }) {
         <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100">キャンセル</button>
         <button
           disabled={busy || !title.trim()}
-          onClick={async () => { setBusy(true); try { await onSave({ title: title.trim(), description: description.trim(), emoji, color, published }); } finally { setBusy(false); } }}
+          onClick={async () => { setBusy(true); try { await onSave({ title: title.trim(), description: description.trim(), emoji, color, published, certificateEnabled, deadline: deadline || null }); } finally { setBusy(false); } }}
           className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2">
           {busy && <Spinner size={14} />}{course ? '保存' : '作成'}
         </button>
@@ -1398,9 +1499,33 @@ function CourseModal({ course, onClose, onSave }) {
             <span className="block text-xs text-slate-400 mt-0.5">公開すると受講生のコース一覧に表示されます。非公開でも招待コードで参加できます。</span>
           </span>
         </label>
+        <label className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 cursor-pointer select-none hover:bg-slate-50">
+          <input type="checkbox" checked={certificateEnabled} onChange={(e) => setCertificateEnabled(e.target.checked)} className="w-4 h-4 mt-0.5 rounded accent-indigo-600" />
+          <span>
+            <span className="flex items-center gap-1.5 text-sm font-bold text-slate-700"><Icon name="Award" size={14} className="text-amber-500" />修了証を発行する</span>
+            <span className="block text-xs text-slate-400 mt-0.5">受講生がコースを100%修了すると、修了証を表示・印刷（PDF保存）できます。</span>
+          </span>
+        </label>
+        <div>
+          <label className="block text-xs font-bold text-slate-500 mb-1.5">受講期限（任意）</label>
+          <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)}
+            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
+          <p className="text-[11px] text-slate-400 mt-1.5">設定すると受講生に「期限まであと◯日」が表示されます。空欄で期限なし。</p>
+        </div>
       </div>
     </Modal>
   );
+}
+
+// 受講期限バッジ
+function DeadlineBadge({ course, muted }) {
+  const info = deadlineInfo(course);
+  if (!info) return null;
+  const dateLabel = `${info.date.getMonth() + 1}/${info.date.getDate()}`;
+  if (muted) return <Badge tone="slate"><Icon name="Clock" size={11} />期限 {dateLabel}</Badge>;
+  if (info.overdue) return <Badge tone="red"><Icon name="AlertTriangle" size={11} />期限超過（{dateLabel}）</Badge>;
+  if (info.days === 0) return <Badge tone="amber"><Icon name="Clock" size={11} />期限 {dateLabel}・本日まで</Badge>;
+  return <Badge tone={info.days <= 7 ? 'amber' : 'slate'}><Icon name="Clock" size={11} />期限 {dateLabel}・あと{info.days}日</Badge>;
 }
 
 function JoinByCodeModal({ onClose }) {
@@ -1547,6 +1672,7 @@ function CoursesPage() {
                     <div className="min-w-0">
                       <div className="font-bold text-sm text-slate-800">{course.title}</div>
                       <div className="text-[11px] text-slate-400 mt-0.5">{p.done}/{p.total} レッスン完了</div>
+                      <div className="mt-1"><DeadlineBadge course={course} muted={p.percent >= 100 && p.total > 0} /></div>
                     </div>
                   </div>
                   <ProgressBar percent={p.percent} />
@@ -1612,6 +1738,7 @@ function CourseDetailPage({ courseId }) {
   const [lessonModal, setLessonModal] = useState(null); // null | {chapterId, lesson?}
   const [deletingLesson, setDeletingLesson] = useState(null);
   const [busyJoin, setBusyJoin] = useState(false);
+  const [showCert, setShowCert] = useState(false);
 
   const course = courses.find((c) => c.id === courseId);
   if (!course) {
@@ -1677,6 +1804,7 @@ function CourseDetailPage({ courseId }) {
                 {isInstructor && (course.published
                   ? <Badge tone="emerald"><Icon name="Globe" size={11} />公開中</Badge>
                   : <Badge tone="slate"><Icon name="Lock" size={11} />非公開</Badge>)}
+                <DeadlineBadge course={course} muted={isInstructor || (progress.percent >= 100 && progress.total > 0)} />
               </div>
               {course.description && <p className="text-sm text-slate-500 mt-1.5 whitespace-pre-wrap leading-relaxed">{course.description}</p>}
               <div className="text-xs text-slate-400 mt-2 flex items-center gap-1"><Icon name="Layers" size={13} />{chapters.length}章・{orderedLessons.length}レッスン</div>
@@ -1699,8 +1827,14 @@ function CourseDetailPage({ courseId }) {
                 </div>
                 <ProgressBar percent={progress.percent} size="lg" />
                 {progress.percent >= 100 && progress.total > 0 ? (
-                  <div className="mt-3 flex items-center gap-2 bg-emerald-50 text-emerald-700 rounded-xl px-4 py-3 text-sm font-bold">
-                    <Icon name="Award" size={18} />おめでとうございます！このコースを修了しました
+                  <div className="mt-3 flex items-center justify-between gap-3 flex-wrap bg-emerald-50 rounded-xl px-4 py-3">
+                    <span className="flex items-center gap-2 text-sm font-bold text-emerald-700"><Icon name="Award" size={18} />おめでとうございます！このコースを修了しました</span>
+                    {course.certificateEnabled && (
+                      <button onClick={() => setShowCert(true)}
+                        className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-colors">
+                        <Icon name="GraduationCap" size={14} />修了証を表示
+                      </button>
+                    )}
                   </div>
                 ) : nextLesson && (
                   <button onClick={() => nav('lesson', { lessonId: nextLesson.id })}
@@ -1904,6 +2038,7 @@ function CourseDetailPage({ courseId }) {
           } catch (e) { console.error(e); toast('保存に失敗しました', 'error'); }
         }} />
       )}
+      {showCert && <CertificateModal course={course} onClose={() => setShowCert(false)} />}
       {deletingLesson && (
         <ConfirmDialog title="レッスンを削除" message={`「${deletingLesson.title}」を削除しますか？\n受講生のテスト結果・課題提出・コメントも削除されます。`}
           onCancel={() => setDeletingLesson(null)}
@@ -1912,6 +2047,51 @@ function CourseDetailPage({ courseId }) {
             catch (e) { console.error(e); toast('削除に失敗しました', 'error'); }
           }} />
       )}
+    </div>
+  );
+}
+
+// 修了証モーダル（印刷対応）
+function CertificateModal({ course, onClose }) {
+  const { authUser, profile, users, enrollments, lessons } = useApp();
+  const enrollment = enrollments.find((e) => e.uid === authUser.uid && e.courseId === course.id);
+  const instructor = users.find((u) => u.id === course.createdBy);
+  const completedDates = Object.values((enrollment && enrollment.completedLessons) || {}).map(tsToDate).filter(Boolean);
+  const doneDate = completedDates.length ? new Date(Math.max(...completedDates.map((d) => d.getTime()))) : new Date();
+  const dateStr = `${doneDate.getFullYear()}年${doneDate.getMonth() + 1}月${doneDate.getDate()}日`;
+  const lessonCount = sortedLessonsOf(course, lessons).length;
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
+      <style>{`@media print { html, body { height: auto !important; overflow: hidden !important; } body * { visibility: hidden !important; } #hakomana-certificate, #hakomana-certificate * { visibility: visible !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } #hakomana-certificate { position: fixed !important; inset: 0 !important; border-radius: 0 !important; box-shadow: none !important; } }`}</style>
+      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-2xl my-auto">
+        <div id="hakomana-certificate" className="bg-white rounded-2xl shadow-2xl p-3">
+          <div className="border-4 border-double rounded-xl px-6 py-10 sm:px-12 sm:py-14 text-center" style={{ borderColor: course.color }}>
+            <div className="inline-flex w-14 h-14 rounded-full items-center justify-center text-white mb-5" style={{ background: course.color }}>
+              <Icon name="GraduationCap" size={30} />
+            </div>
+            <div className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-[0.5em] pl-[0.5em] mb-8">修了証</div>
+            <div className="text-lg font-bold text-slate-900 border-b-2 border-slate-300 inline-block px-8 pb-1.5 mb-6">{profile.displayName} 殿</div>
+            <p className="text-sm text-slate-600 leading-relaxed mb-8 max-w-md mx-auto">
+              あなたは「<span className="font-bold text-slate-800">{course.title}</span>」の全カリキュラム（全{lessonCount}レッスン）を修了されました。その努力と成果をここに証します。
+            </p>
+            <div className="text-sm text-slate-700 font-bold">修了日　{dateStr}</div>
+            <div className="text-xs text-slate-400 mt-5">発行：{instructor ? instructor.displayName : '講師'}｜ハコマナ 研修・教育プラットフォーム</div>
+          </div>
+        </div>
+        <div className="flex justify-center gap-2 mt-4">
+          <button onClick={() => window.print()}
+            className="px-5 py-2.5 rounded-xl bg-white text-slate-700 text-sm font-bold hover:bg-slate-100 transition-colors flex items-center gap-1.5 shadow">
+            <Icon name="Download" size={15} />印刷 / PDF保存
+          </button>
+          <button onClick={onClose} className="px-5 py-2.5 rounded-xl bg-slate-800 text-white text-sm font-bold hover:bg-slate-700 transition-colors">閉じる</button>
+        </div>
+      </div>
     </div>
   );
 }
