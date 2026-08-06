@@ -507,18 +507,17 @@ function AppProvider({ children }) {
   // ---------- アクション ----------
   // 実Firestoreの set(merge:true) はネストマップを深いマージするため、
   // completedLessons のキー削除が反映されない。常に完全なドキュメントを書き込む。
+  // 受講登録が存在する場合のみ更新する（解除済みenrollmentをset()で復活させないためupdate()を使用）
   const touchEnrollment = useCallback(async (courseId, patch) => {
     if (!authUser) return;
-    const id = eid(authUser.uid, courseId);
     const en = enrollments.find((x) => x.uid === authUser.uid && x.courseId === courseId);
+    if (!en) return; // 未受講・受講解除済みなら何もしない
+    const id = eid(authUser.uid, courseId);
     const d = new Date();
     const todayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    await db.collection(COL.enrollments).doc(id).set({
-      uid: authUser.uid,
-      courseId,
-      joinedAt: (en && en.joinedAt) || Date.now(),
-      completedLessons: (en && en.completedLessons) || {},
-      activityDays: { ...((en && en.activityDays) || {}), [todayKey]: true },
+    await db.collection(COL.enrollments).doc(id).update({
+      completedLessons: en.completedLessons || {},
+      activityDays: { ...(en.activityDays || {}), [todayKey]: true },
       lastActivityAt: Date.now(),
       ...patch,
     });
@@ -606,6 +605,24 @@ function AppProvider({ children }) {
           completedLessons: {}, lastActivityAt: Date.now(),
         });
       }
+    },
+
+    // 講師が受講生をコースに割り当てる
+    async assignStudents(courseId, uids) {
+      for (const uid of uids) {
+        const id = eid(uid, courseId);
+        const snap = await db.collection(COL.enrollments).doc(id).get();
+        if (!snap.exists) {
+          await db.collection(COL.enrollments).doc(id).set({
+            uid, courseId, joinedAt: Date.now(),
+            completedLessons: {}, activityDays: {}, lastActivityAt: null,
+          });
+        }
+      }
+    },
+
+    async removeEnrollment(enrollmentId) {
+      await db.collection(COL.enrollments).doc(enrollmentId).delete();
     },
 
     async markLessonComplete(lessonId, courseId) {
@@ -753,7 +770,9 @@ function courseProgressOf(course, lessons, enrollment) {
   const ls = sortedLessonsOf(course, lessons);
   const completed = (enrollment && enrollment.completedLessons) || {};
   const done = ls.filter((l) => completed[l.id]).length;
-  return { total: ls.length, done, percent: ls.length ? Math.round((done / ls.length) * 100) : 0 };
+  // 四捨五入で99.5%以上が100%にならないようクランプ（修了判定はpercent>=100で統一されているため）
+  const percent = ls.length ? (done >= ls.length ? 100 : Math.min(99, Math.round((done / ls.length) * 100))) : 0;
+  return { total: ls.length, done, percent };
 }
 
 // ========== ルーティング ==========
@@ -1236,12 +1255,18 @@ function StudentDashboard() {
     .filter((x) => x.course);
 
   const totalDone = myEnrollments.reduce((sum, en) => sum + Object.keys(en.completedLessons || {}).length, 0);
-  const myQuiz = quizResults.filter((r) => r.uid === authUser.uid);
+  const myCourseIds = new Set(myEnrollments.map((e) => e.courseId));
+  const myQuiz = quizResults.filter((r) => r.uid === authUser.uid && myCourseIds.has(r.courseId));
   const passedQuiz = myQuiz.filter((r) => r.passed).length;
   const completedCourses = myCourses.filter(({ en, course }) => {
     const p = courseProgressOf(course, lessons, en);
     return p.total > 0 && p.done >= p.total;
   }).length;
+
+  const deadlineAlerts = myCourses
+    .map(({ en, course }) => ({ en, course, info: deadlineInfo(course), p: courseProgressOf(course, lessons, en) }))
+    .filter((x) => x.info && x.p.total > 0 && x.p.done < x.p.total && (x.info.overdue || x.info.days <= 7))
+    .sort((a, b) => a.info.days - b.info.days);
 
   return (
     <>
@@ -1252,6 +1277,38 @@ function StudentDashboard() {
       </div>
 
       <StreakCard />
+
+      {deadlineAlerts.length > 0 && (
+        <div className="bg-white rounded-2xl border-2 border-red-200 shadow-sm overflow-hidden">
+          <div className="bg-red-50 px-5 py-3 border-b border-red-100">
+            <h2 className="font-bold text-slate-900 text-sm flex items-center gap-2"><Icon name="AlertTriangle" size={16} className="text-red-500" />期限が近いコース</h2>
+          </div>
+          <div className="divide-y divide-slate-50">
+            {deadlineAlerts.map(({ en, course, info, p }) => {
+              const orderedLessons = sortedLessonsOf(course, lessons);
+              const nextLesson = orderedLessons.find((l) => !(en.completedLessons || {})[l.id]);
+              return (
+                <div key={course.id} className="px-5 py-3 flex items-center gap-3">
+                  <span className="text-xl shrink-0">{course.emoji}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-bold text-slate-800 truncate">{course.title}</div>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <DeadlineBadge course={course} />
+                      <span className="text-[11px] text-slate-400">進捗 {p.percent}%</span>
+                    </div>
+                  </div>
+                  {nextLesson && (
+                    <button onClick={() => nav('lesson', { lessonId: nextLesson.id })}
+                      className="shrink-0 flex items-center gap-1 text-xs font-bold text-white bg-red-500 hover:bg-red-600 px-3 py-1.5 rounded-lg transition-colors">
+                      <Icon name="Play" size={11} />進める
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm">
         <div className="flex items-center justify-between px-5 pt-4 pb-2">
@@ -1301,6 +1358,49 @@ function StudentDashboard() {
 
       <AnnouncementList manageable={false} />
     </>
+  );
+}
+
+// コース別の平均進捗（講師ダッシュボード）
+function CourseProgressOverview() {
+  const { users, courses, lessons, enrollments } = useApp();
+  const { nav } = useRoute();
+  const rows = useMemo(() => courses
+    .map((c) => {
+      const ens = enrollments.filter((e) => e.courseId === c.id && users.some((u) => u.id === e.uid && u.role === 'student'));
+      const avg = ens.length
+        ? Math.round(ens.reduce((s, en) => s + courseProgressOf(c, lessons, en).percent, 0) / ens.length)
+        : 0;
+      const done = ens.filter((en) => { const p = courseProgressOf(c, lessons, en); return p.total > 0 && p.done >= p.total; }).length;
+      return { course: c, count: ens.length, avg, done };
+    })
+    .filter((r) => r.count > 0)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5), [courses, lessons, enrollments, users]);
+  if (!rows.length) return null;
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm">
+      <div className="px-5 pt-4 pb-2">
+        <h2 className="font-bold text-slate-900 flex items-center gap-2"><Icon name="BarChart" size={17} className="text-emerald-500" />コース別の進捗</h2>
+      </div>
+      <div className="divide-y divide-slate-50">
+        {rows.map(({ course, count, avg, done }) => (
+          <button key={course.id} onClick={() => nav('progress', { courseId: course.id })}
+            className="w-full px-5 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors text-left">
+            <span className="text-xl shrink-0">{course.emoji}</span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <span className="text-sm font-bold text-slate-800 truncate">{course.title}</span>
+                <span className="text-[11px] text-slate-400 shrink-0">{count}人受講・{done}人修了</span>
+              </div>
+              <ProgressBar percent={avg} size="sm" />
+            </div>
+            <span className={`text-sm font-bold shrink-0 ${avg >= 100 ? 'text-emerald-600' : 'text-slate-700'}`}>{avg}%</span>
+            <Icon name="ChevronRight" size={15} className="text-slate-300 shrink-0" />
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1382,7 +1482,8 @@ function InstructorDashboard() {
     return pcts.length ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length) : 0;
   }, [enrollments, courses, lessons]);
 
-  const pendingSubmissions = submissions.filter((s) => !s.feedback);
+  const pendingSubmissions = submissions.filter((s) =>
+    !s.feedback && enrollments.some((en) => en.uid === s.uid && en.courseId === s.courseId));
 
   return (
     <>
@@ -1392,6 +1493,8 @@ function InstructorDashboard() {
         <StatCard icon="BarChart" label="平均進捗率" value={`${avgProgress}%`} tone="emerald" />
         <StatCard icon="ClipboardList" label="未対応の課題" value={pendingSubmissions.length} tone="amber" />
       </div>
+
+      <CourseProgressOverview />
 
       {pendingSubmissions.length > 0 && (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm">
@@ -3423,9 +3526,12 @@ function ProgressPage({ initialCourseId }) {
 }
 
 function InstructorProgress({ initialCourseId }) {
-  const { users, courses, lessons, enrollments, quizResults } = useApp();
+  const { users, courses, lessons, enrollments, quizResults, actions } = useApp();
   const { nav } = useRoute();
+  const toast = useToast();
   const [courseId, setCourseId] = useState(initialCourseId || null);
+  const [assigning, setAssigning] = useState(false);
+  const [removingEn, setRemovingEn] = useState(null);
 
   const sortedCourses = [...courses].sort((a, b) => (tsToDate(b.createdAt)?.getTime() || 0) - (tsToDate(a.createdAt)?.getTime() || 0));
   const defaultCourse = useMemo(() => {
@@ -3459,7 +3565,8 @@ function InstructorProgress({ initialCourseId }) {
     : 0;
   const quizLessons = orderedLessons.filter((l) => l.quiz && (l.quiz.questions || []).length > 0);
   const quizLessonIds = new Set(quizLessons.map((l) => l.id));
-  const courseQuizResults = quizResults.filter((r) => r.courseId === course.id && quizLessonIds.has(r.lessonId));
+  const enrolledUids = new Set(courseEnrollments.map(({ en }) => en.uid));
+  const courseQuizResults = quizResults.filter((r) => r.courseId === course.id && quizLessonIds.has(r.lessonId) && enrolledUids.has(r.uid));
   const avgQuizScore = courseQuizResults.length
     ? Math.round(courseQuizResults.reduce((s, r) => s + (r.bestScore || 0), 0) / courseQuizResults.length)
     : null;
@@ -3486,10 +3593,16 @@ function InstructorProgress({ initialCourseId }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl font-bold text-slate-900">進捗管理</h1>
-        <button onClick={exportCSV} disabled={courseEnrollments.length === 0}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-100 transition-colors disabled:opacity-40">
-          <Icon name="Download" size={14} />CSV出力
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setAssigning(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors">
+            <Icon name="UserPlus" size={14} />受講生を追加
+          </button>
+          <button onClick={exportCSV} disabled={courseEnrollments.length === 0}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-100 transition-colors disabled:opacity-40">
+            <Icon name="Download" size={14} />CSV出力
+          </button>
+        </div>
       </div>
 
       {/* コース選択 */}
@@ -3520,7 +3633,7 @@ function InstructorProgress({ initialCourseId }) {
       ) : (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="text-xs w-full" style={{ minWidth: `${180 + orderedLessons.length * 56 + 80}px` }}>
+            <table className="text-xs w-full" style={{ minWidth: `${180 + orderedLessons.length * 56 + 120}px` }}>
               <thead>
                 <tr className="border-b border-slate-100">
                   <th className="sticky left-0 bg-white text-left px-4 py-3 font-bold text-slate-500 min-w-[150px] z-10">受講生</th>
@@ -3536,6 +3649,7 @@ function InstructorProgress({ initialCourseId }) {
                     );
                   })}
                   <th className="px-3 py-3 font-bold text-slate-500 text-right min-w-[70px]">進捗</th>
+                  <th className="w-10" />
                 </tr>
               </thead>
               <tbody>
@@ -3574,6 +3688,12 @@ function InstructorProgress({ initialCourseId }) {
                       <td className="px-3 py-2.5 text-right">
                         <span className={`font-bold ${p.percent >= 100 ? 'text-emerald-600' : 'text-slate-700'}`}>{p.percent}%</span>
                       </td>
+                      <td className="px-2 py-2.5 text-center w-10">
+                        <button onClick={() => setRemovingEn({ en, student })} title="受講解除"
+                          className="p-1.5 rounded-lg text-slate-300 hover:bg-red-50 hover:text-red-500 transition-colors">
+                          <Icon name="X" size={14} />
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -3588,13 +3708,86 @@ function InstructorProgress({ initialCourseId }) {
           </div>
         </div>
       )}
+
+      {assigning && (
+        <AssignStudentsModal course={course} onClose={() => setAssigning(false)} onAssign={async (uids) => {
+          try {
+            await actions.assignStudents(course.id, uids);
+            toast(`${uids.length}名を「${course.title}」に追加しました`);
+            setAssigning(false);
+          } catch (e) { console.error(e); toast('追加に失敗しました', 'error'); }
+        }} />
+      )}
+      {removingEn && (
+        <ConfirmDialog title="受講解除"
+          message={`${removingEn.student.displayName}さんを「${course.title}」から受講解除しますか？\nレッスンの完了状況・学習日数の記録は削除されます（テスト結果・課題提出・コメントは残ります）。\n${course.published ? '公開中のコースのため、受講生はコース一覧からいつでも再参加できます。' : '招待コードを知っていれば再参加できます。'}`}
+          confirmLabel="解除する"
+          onCancel={() => setRemovingEn(null)}
+          onConfirm={async () => {
+            try { await actions.removeEnrollment(removingEn.en.id); toast('受講解除しました'); setRemovingEn(null); }
+            catch (e) { console.error(e); toast('解除に失敗しました', 'error'); }
+          }} />
+      )}
     </div>
+  );
+}
+
+// 受講生の一括割当モーダル（講師）
+function AssignStudentsModal({ course, onClose, onAssign }) {
+  const { users, enrollments } = useApp();
+  const enrolledIds = new Set(enrollments.filter((e) => e.courseId === course.id).map((e) => e.uid));
+  const candidates = users
+    .filter((u) => u.role === 'student' && !enrolledIds.has(u.id))
+    .sort((a, b) => (a.displayName || '').localeCompare(b.displayName || '', 'ja'));
+  const [selected, setSelected] = useState({});
+  const [busy, setBusy] = useState(false);
+  const ids = Object.keys(selected).filter((k) => selected[k]);
+  return (
+    <Modal title={`「${course.title}」に受講生を追加`} onClose={onClose} footer={
+      <>
+        <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100">キャンセル</button>
+        <button disabled={busy || ids.length === 0}
+          onClick={async () => { setBusy(true); try { await onAssign(ids); } finally { setBusy(false); } }}
+          className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2">
+          {busy && <Spinner size={14} />}追加する{ids.length > 0 ? `（${ids.length}名）` : ''}
+        </button>
+      </>
+    }>
+      {candidates.length === 0 ? (
+        <div className="text-sm text-slate-400 text-center py-6">追加できる受講生がいません（全員受講中です）</div>
+      ) : (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-slate-400">追加する受講生を選択してください</p>
+            <button onClick={() => {
+              const all = candidates.every((u) => selected[u.id]);
+              const next = {};
+              candidates.forEach((u) => { next[u.id] = !all; });
+              setSelected(next);
+            }} className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800">全員選択/解除</button>
+          </div>
+          {candidates.map((u) => (
+            <label key={u.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 cursor-pointer select-none">
+              <input type="checkbox" checked={!!selected[u.id]}
+                onChange={(e) => setSelected((prev) => ({ ...prev, [u.id]: e.target.checked }))}
+                className="w-4 h-4 rounded accent-indigo-600" />
+              <Avatar name={u.displayName} size="sm" />
+              <span className="min-w-0">
+                <span className="block text-sm font-bold text-slate-800 truncate">{u.displayName}</span>
+                <span className="block text-xs text-slate-400 truncate">{u.email}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+    </Modal>
   );
 }
 
 function StudentProgress() {
   const { authUser, courses, lessons, enrollments, quizResults } = useApp();
   const { nav } = useRoute();
+  const [certCourse, setCertCourse] = useState(null);
   const myEnrollments = enrollments.filter((e) => e.uid === authUser.uid);
   const myCourses = myEnrollments
     .map((en) => ({ en, course: courses.find((c) => c.id === en.courseId) }))
@@ -3628,6 +3821,12 @@ function StudentProgress() {
                   <div className="font-bold text-sm text-slate-800">{course.title}</div>
                   <div className="text-[11px] text-slate-400">{p.done}/{p.total} レッスン完了{en.lastActivityAt ? `・最終学習 ${fmtRelative(en.lastActivityAt)}` : ''}</div>
                 </div>
+                {p.percent >= 100 && p.total > 0 && course.certificateEnabled && (
+                  <button onClick={(e) => { e.stopPropagation(); setCertCourse(course); }}
+                    className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 text-[11px] font-bold hover:bg-emerald-100 transition-colors">
+                    <Icon name="GraduationCap" size={12} />修了証
+                  </button>
+                )}
                 <span className={`text-lg font-bold shrink-0 ${p.percent >= 100 ? 'text-emerald-600' : 'text-indigo-600'}`}>{p.percent}%</span>
               </div>
               <ProgressBar percent={p.percent} />
@@ -3654,6 +3853,7 @@ function StudentProgress() {
           </div>
         );
       })}
+      {certCourse && <CertificateModal course={certCourse} onClose={() => setCertCourse(null)} />}
     </div>
   );
 }
@@ -3741,8 +3941,9 @@ function StudentDetailModal({ user, onClose }) {
   const uEnrollments = enrollments
     .map((en) => ({ en, course: courses.find((c) => c.id === en.courseId) }))
     .filter((x) => x.en.uid === user.id && x.course);
-  const uQuiz = quizResults.filter((r) => r.uid === user.id);
-  const uSubs = submissions.filter((s) => s.uid === user.id);
+  const uCourseIds = new Set(uEnrollments.map((x) => x.en.courseId));
+  const uQuiz = quizResults.filter((r) => r.uid === user.id && uCourseIds.has(r.courseId));
+  const uSubs = submissions.filter((s) => s.uid === user.id && uCourseIds.has(s.courseId));
 
   return (
     <Modal title={`${user.displayName}さんの学習状況`} onClose={onClose} wide>
