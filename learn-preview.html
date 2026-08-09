@@ -229,7 +229,7 @@
       title: '新人配達員研修（基礎編）',
       description: '入社1週間で身につける配達業務の基本をまとめたコースです。荷物の取り扱いから不在時の対応、接客マナーまで、現場に出る前に必ず受講してください。',
       emoji: '📦', color: '#4f46e5', published: true, inviteCode: 'HAKO01',
-      certificateEnabled: true, deadline: null,
+      certificateEnabled: true, sequential: true, deadline: null,
       chapters: [
         { id: 'ch1', title: 'はじめに', order: 1 },
         { id: 'ch2', title: '配達業務の基本', order: 2 },
@@ -239,7 +239,7 @@
     });
 
     _set('edu_lessons', 'l1', {
-      courseId: 'c1', chapterId: 'ch1', order: 1, title: 'ようこそ！研修のご案内',
+      courseId: 'c1', chapterId: 'ch1', order: 1, title: 'ようこそ！研修のご案内', durationMin: 5,
       blocks: [
         { id: 'b1_1', type: 'text', content: '# 新人配達員研修へようこそ\nこのコースでは、配達業務に必要な基礎知識を1週間で学びます。\n\n## この研修のゴール\n- 荷物を**安全・確実**に届けられるようになる\n- 不在時・トラブル時の対応が一人でできるようになる\n- お客様に信頼される接客マナーを身につける\n\nわからないことがあれば、各レッスンの下にあるコメント欄からいつでも質問してください。' },
         { id: 'b1_2', type: 'video', url: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ' },
@@ -247,14 +247,14 @@
       quiz: null, assignment: null, updatedAt: daysAgo(20),
     });
     _set('edu_lessons', 'l2', {
-      courseId: 'c1', chapterId: 'ch1', order: 2, title: '研修の進め方',
+      courseId: 'c1', chapterId: 'ch1', order: 2, title: '研修の進め方', durationMin: 5,
       blocks: [
         { id: 'b2_1', type: 'text', content: '# 研修の進め方\n各レッスンは上から順番に進めてください。\n\n- テキストと動画で学習する\n- レッスン末尾の「完了にする」ボタンを押す\n- **理解度テスト**があるレッスンは、テストに合格すると自動的に完了になります\n- 課題があるレッスンは回答を提出してください。講師からフィードバックが届きます\n\n## 進捗の確認\n「学習状況」ページで自分の進捗をいつでも確認できます。' },
       ],
       quiz: null, assignment: null, updatedAt: daysAgo(20),
     });
     _set('edu_lessons', 'l3', {
-      courseId: 'c1', chapterId: 'ch2', order: 1, title: '荷物の取り扱い基本',
+      courseId: 'c1', chapterId: 'ch2', order: 1, title: '荷物の取り扱い基本', durationMin: 15,
       blocks: [
         { id: 'b3_1', type: 'text', content: '# 荷物の取り扱い5原則\n\n- 荷物は**両手で**持つ（片手持ち禁止）\n- 「ワレモノ」「天地無用」シールを必ず確認\n- 積み込みは**重いものを下、軽いものを上**\n- 雨天時は防水カバーを使用\n- 荷台の整理整頓を出発前に行う\n\n## 破損を防ぐために\n荷物の破損はお客様の信頼を大きく損ないます。「急いでいるときほど丁寧に」を合言葉にしましょう。' },
         { id: 'b3_2', type: 'file', name: '配達前チェックリスト.txt', url: 'data:text/plain;charset=utf-8,' + encodeURIComponent('【配達前チェックリスト】\n□ 車両点検（タイヤ・ライト・ブレーキ）\n□ 荷物の積み込み確認（重い物が下）\n□ ワレモノシールの確認\n□ 端末・伝票の確認\n□ 防水カバーの準備\n□ 身だしなみチェック'), size: 220, mime: 'text/plain' },
@@ -263,7 +263,7 @@
       quiz: null, assignment: null, updatedAt: daysAgo(18),
     });
     _set('edu_lessons', 'l4', {
-      courseId: 'c1', chapterId: 'ch2', order: 2, title: '不在時の対応',
+      courseId: 'c1', chapterId: 'ch2', order: 2, title: '不在時の対応', durationMin: 15,
       blocks: [
         { id: 'b4_1', type: 'text', content: '# お客様が不在だったら\n\n## 基本の流れ\n- インターホンを鳴らして**30秒待つ**\n- もう一度鳴らして在宅確認\n- 置き配指定があれば指定場所へ（写真を撮影）\n- 指定がなければ**不在票**を投函して持ち戻り\n\n## 不在票に記載すること\n- 訪問日時\n- 再配達の連絡方法（電話・QRコード）\n- ドライバー名（担当者コード）\n\n**個人の携帯番号や荷物の中身は絶対に記載しないでください。**\n\n## 置き配の注意点\n- 雨に濡れない場所を選ぶ\n- 道路から見えにくい場所に置く\n- 必ず配達完了写真を撮影する' },
       ],
@@ -313,15 +313,23 @@
       assignment: null, updatedAt: daysAgo(15),
     });
     _set('edu_lessons', 'l5', {
-      courseId: 'c1', chapterId: 'ch2', order: 3, title: '配達アプリの使い方',
+      courseId: 'c1', chapterId: 'ch2', order: 3, title: '配達アプリの使い方', durationMin: 10,
       blocks: [
         { id: 'b5_1', type: 'text', content: '# 配達アプリの基本操作\n配達ルートの確認・配達完了の登録・不在の登録は、すべて配達アプリで行います。\n\n## 1日の流れ\n- 出発前：本日のルートを確認\n- 配達時：完了ボタン＋（置き配の場合）写真登録\n- 不在時：不在登録 → 不在票番号を入力\n- 終業時：日報を送信\n\n**操作に迷ったら、必ずその場でリーダーに連絡してください。**自己判断での操作ミスが最も多いトラブル原因です。' },
         { id: 'b5_2', type: 'link', url: 'https://support.google.com/maps/', label: '参考：マップアプリの使い方' },
       ],
       quiz: null, assignment: null, updatedAt: daysAgo(14),
     });
+    _set('edu_lessons', 'l10', {
+      courseId: 'c1', chapterId: 'ch2', order: 4, title: '梱包資材の取り扱い',
+      draft: true, durationMin: 10,
+      blocks: [
+        { id: 'b10_1', type: 'text', content: '# 梱包資材の取り扱い（作成中）\nこのレッスンは現在準備中です。緩衝材の種類と使い分けについて解説予定。' },
+      ],
+      quiz: null, assignment: null, updatedAt: daysAgo(1),
+    });
     _set('edu_lessons', 'l6', {
-      courseId: 'c1', chapterId: 'ch3', order: 1, title: 'あいさつと言葉づかい',
+      courseId: 'c1', chapterId: 'ch3', order: 1, title: 'あいさつと言葉づかい', durationMin: 10,
       blocks: [
         { id: 'b6_1', type: 'text', content: '# 第一印象は3秒で決まる\n配達員は会社の顔です。お客様と接する時間は短くても、印象は長く残ります。\n\n## 基本のあいさつ\n- 「お世話になっております。〇〇運送です」\n- 荷物を渡すとき：「こちらお荷物です。ありがとうございました」\n- 雨の日：「足元の悪い中恐れ入ります」\n\n## 気をつけたい言葉づかい\n- ×「了解です」→ ○「かしこまりました」\n- ×「ハンコください」→ ○「こちらにご印鑑をお願いいたします」\n\n## 身だしなみ\n- 制服は清潔に、名札は見える位置に\n- マスク着用時も**目元で笑顔**を意識する' },
       ],
@@ -365,14 +373,14 @@
       createdBy: 'u_okada', createdAt: daysAgo(14), updatedAt: daysAgo(5),
     });
     _set('edu_lessons', 'l7', {
-      courseId: 'c2', chapterId: 'ch4', order: 1, title: '運転前点検のポイント',
+      courseId: 'c2', chapterId: 'ch4', order: 1, title: '運転前点検のポイント', durationMin: 10,
       blocks: [
         { id: 'b7_1', type: 'text', content: '# 出発前5分の点検が事故を防ぐ\n\n## 毎日の点検項目\n- タイヤの空気圧・溝・亀裂\n- ブレーキの効き\n- ライト・ウインカーの点灯\n- ミラーの角度\n- 荷室の扉のロック\n\n## 週1回の点検項目\n- エンジンオイル量\n- 冷却水量\n- ワイパー・ウォッシャー液\n\n異常を見つけたら**運行前に必ず**管理者へ報告してください。「たぶん大丈夫」が一番危険です。' },
       ],
       quiz: null, assignment: null, updatedAt: daysAgo(13),
     });
     _set('edu_lessons', 'l8', {
-      courseId: 'c2', chapterId: 'ch4', order: 2, title: '危険予知トレーニング',
+      courseId: 'c2', chapterId: 'ch4', order: 2, title: '危険予知トレーニング', durationMin: 15,
       blocks: [
         { id: 'b8_1', type: 'text', content: '# 「かもしれない運転」を徹底する\n\n住宅街での配達は、子ども・自転車・ペットの飛び出しリスクと隣り合わせです。\n\n- 住宅街では**時速20km以下**を目安に\n- 交差点では一時停止＋左右確認\n- バックは降車確認が原則\n- 駐車時はハザード＋輪止め' },
         { id: 'b8_2', type: 'video', url: 'https://www.youtube.com/watch?v=ScMzIvxBSi4' },
@@ -1024,6 +1032,7 @@ function AppProvider({ children }) {
         emoji: course.emoji || '📘', color: course.color || '#4f46e5',
         published: false,
         certificateEnabled: !!course.certificateEnabled,
+        sequential: !!course.sequential,
         deadline: null,
         inviteCode: Math.random().toString(36).slice(2, 8).toUpperCase(),
         chapters: newChapters,
@@ -1033,6 +1042,7 @@ function AppProvider({ children }) {
         if (!chapterIdMap[l.chapterId]) continue;
         await db.collection(COL.lessons).doc(genId('l')).set({
           courseId: newId, chapterId: chapterIdMap[l.chapterId], title: l.title, order: l.order || 0,
+          draft: !!l.draft, durationMin: l.durationMin || null,
           blocks: (l.blocks || []).map((b) => ({ ...b, id: genId('b') })),
           quiz: l.quiz ? {
             ...l.quiz,
@@ -1060,12 +1070,13 @@ function AppProvider({ children }) {
       await db.collection(COL.courses).doc(courseId).delete();
     },
 
-    async createLesson(course, chapterId, title) {
+    async createLesson(course, chapterId, data) {
       const id = genId('l');
       const siblings = lessons.filter((l) => l.courseId === course.id && l.chapterId === chapterId);
       const order = siblings.length ? Math.max(...siblings.map((l) => l.order || 0)) + 1 : 1;
       await db.collection(COL.lessons).doc(id).set({
-        courseId: course.id, chapterId, title, order,
+        courseId: course.id, chapterId, order,
+        title: data.title, draft: !!data.draft, durationMin: data.durationMin || null,
         blocks: [], quiz: null, assignment: null, updatedAt: Date.now(),
       });
       return id;
@@ -1269,13 +1280,33 @@ function sortedLessonsOf(course, lessons) {
       return (a.order || 0) - (b.order || 0);
     });
 }
+// 受講生に見えるレッスン（下書きを除く）。進捗計算もこちらを使う
+function visibleLessonsOf(course, lessons) {
+  return sortedLessonsOf(course, lessons).filter((l) => !l.draft);
+}
 function courseProgressOf(course, lessons, enrollment) {
-  const ls = sortedLessonsOf(course, lessons);
+  const ls = visibleLessonsOf(course, lessons);
   const completed = (enrollment && enrollment.completedLessons) || {};
   const done = ls.filter((l) => completed[l.id]).length;
   // 四捨五入で99.5%以上が100%にならないようクランプ（修了判定はpercent>=100で統一されているため）
   const percent = ls.length ? (done >= ls.length ? 100 : Math.min(99, Math.round((done / ls.length) * 100))) : 0;
   return { total: ls.length, done, percent };
+}
+// 合計所要時間（分）。未設定レッスンは0扱い
+function totalDurationOf(lessonList) {
+  return lessonList.reduce((s, l) => s + (Number(l.durationMin) > 0 ? Number(l.durationMin) : 0), 0);
+}
+// 順次学習モード: 最初の未完了レッスンより後ろはロック（完了済みはいつでも復習可）
+function lockedLessonSet(course, lessons, enrollment) {
+  const locked = new Set();
+  if (!course || !course.sequential) return locked;
+  const completed = (enrollment && enrollment.completedLessons) || {};
+  let blocked = false;
+  for (const l of visibleLessonsOf(course, lessons)) {
+    if (blocked) locked.add(l.id);
+    if (!completed[l.id]) blocked = true;
+  }
+  return locked;
 }
 
 // ========== ルーティング ==========
@@ -1788,7 +1819,7 @@ function StudentDashboard() {
           </div>
           <div className="divide-y divide-slate-50">
             {deadlineAlerts.map(({ en, course, info, p }) => {
-              const orderedLessons = sortedLessonsOf(course, lessons);
+              const orderedLessons = visibleLessonsOf(course, lessons);
               const nextLesson = orderedLessons.find((l) => !(en.completedLessons || {})[l.id]);
               return (
                 <div key={course.id} className="px-5 py-3 flex items-center gap-3">
@@ -1828,7 +1859,7 @@ function StudentDashboard() {
           <div className="px-5 pb-5 pt-1 grid gap-3 sm:grid-cols-2">
             {myCourses.map(({ en, course }) => {
               const p = courseProgressOf(course, lessons, en);
-              const orderedLessons = sortedLessonsOf(course, lessons);
+              const orderedLessons = visibleLessonsOf(course, lessons);
               const nextLesson = orderedLessons.find((l) => !(en.completedLessons || {})[l.id]);
               return (
                 <div key={course.id} className="border border-slate-100 rounded-xl p-4 hover:border-indigo-200 hover:shadow-sm transition-all cursor-pointer"
@@ -2094,6 +2125,7 @@ function CourseModal({ course, onClose, onSave }) {
   const [color, setColor] = useState(course ? course.color : '#4f46e5');
   const [published, setPublished] = useState(course ? !!course.published : false);
   const [certificateEnabled, setCertificateEnabled] = useState(course ? !!course.certificateEnabled : true);
+  const [sequential, setSequential] = useState(course ? !!course.sequential : false);
   const [deadline, setDeadline] = useState(course && course.deadline ? course.deadline : '');
   const [busy, setBusy] = useState(false);
   return (
@@ -2102,7 +2134,7 @@ function CourseModal({ course, onClose, onSave }) {
         <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100">キャンセル</button>
         <button
           disabled={busy || !title.trim()}
-          onClick={async () => { setBusy(true); try { await onSave({ title: title.trim(), description: description.trim(), emoji, color, published, certificateEnabled, deadline: deadline || null }); } finally { setBusy(false); } }}
+          onClick={async () => { setBusy(true); try { await onSave({ title: title.trim(), description: description.trim(), emoji, color, published, certificateEnabled, sequential, deadline: deadline || null }); } finally { setBusy(false); } }}
           className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2">
           {busy && <Spinner size={14} />}{course ? '保存' : '作成'}
         </button>
@@ -2150,6 +2182,13 @@ function CourseModal({ course, onClose, onSave }) {
           <span>
             <span className="flex items-center gap-1.5 text-sm font-bold text-slate-700"><Icon name="Award" size={14} className="text-amber-500" />修了証を発行する</span>
             <span className="block text-xs text-slate-400 mt-0.5">受講生がコースを100%修了すると、修了証を表示・印刷（PDF保存）できます。</span>
+          </span>
+        </label>
+        <label className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 cursor-pointer select-none hover:bg-slate-50">
+          <input type="checkbox" checked={sequential} onChange={(e) => setSequential(e.target.checked)} className="w-4 h-4 mt-0.5 rounded accent-indigo-600" />
+          <span>
+            <span className="flex items-center gap-1.5 text-sm font-bold text-slate-700"><Icon name="Lock" size={14} className="text-sky-500" />順番に学習させる（順次学習モード）</span>
+            <span className="block text-xs text-slate-400 mt-0.5">前のレッスンを完了するまで、次のレッスンをロックします。カリキュラムの順番どおりに受講させたい研修に。</span>
           </span>
         </label>
         <div>
@@ -2337,7 +2376,7 @@ function CoursesPage() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {available.map((course) => {
-              const ls = sortedLessonsOf(course, lessons);
+              const ls = visibleLessonsOf(course, lessons);
               return (
                 <div key={course.id} onClick={() => nav('course', { courseId: course.id })}
                   className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 cursor-pointer hover:border-indigo-200 hover:shadow transition-all">
@@ -2399,13 +2438,17 @@ function CourseDetailPage({ courseId }) {
 
   const chapters = sortedChaptersOf(course);
   const orderedLessons = sortedLessonsOf(course, lessons);
+  // 受講生には下書きレッスンを表示しない（講師には全件表示）
+  const shownLessons = isInstructor ? orderedLessons : orderedLessons.filter((l) => !l.draft);
   const enrollment = enrollments.find((e) => e.uid === authUser.uid && e.courseId === courseId);
   const completed = (enrollment && enrollment.completedLessons) || {};
   const progress = courseProgressOf(course, lessons, enrollment);
-  const nextLesson = orderedLessons.find((l) => !completed[l.id]);
+  const nextLesson = orderedLessons.filter((l) => !l.draft).find((l) => !completed[l.id]);
   const isEnrolled = !!enrollment;
+  const lockedSet = !isInstructor && isEnrolled ? lockedLessonSet(course, lessons, enrollment) : new Set();
+  const totalMin = totalDurationOf(shownLessons);
 
-  const lessonsByChapter = (chId) => orderedLessons.filter((l) => l.chapterId === chId);
+  const lessonsByChapter = (chId) => shownLessons.filter((l) => l.chapterId === chId);
   const isChapterOpen = (chId, idx) => openChapters[chId] != null ? openChapters[chId] : true;
   const toggleChapter = (chId, idx) => setOpenChapters((prev) => ({ ...prev, [chId]: !isChapterOpen(chId, idx) }));
 
@@ -2451,10 +2494,14 @@ function CourseDetailPage({ courseId }) {
                 {isInstructor && (course.published
                   ? <Badge tone="emerald"><Icon name="Globe" size={11} />公開中</Badge>
                   : <Badge tone="slate"><Icon name="Lock" size={11} />非公開</Badge>)}
+                {course.sequential && <Badge tone="sky"><Icon name="Lock" size={11} />順番に学習</Badge>}
                 <DeadlineBadge course={course} muted={isInstructor || (progress.percent >= 100 && progress.total > 0)} />
               </div>
               {course.description && <p className="text-sm text-slate-500 mt-1.5 whitespace-pre-wrap leading-relaxed">{course.description}</p>}
-              <div className="text-xs text-slate-400 mt-2 flex items-center gap-1"><Icon name="Layers" size={13} />{chapters.length}章・{orderedLessons.length}レッスン</div>
+              <div className="text-xs text-slate-400 mt-2 flex items-center gap-3 flex-wrap">
+                <span className="flex items-center gap-1"><Icon name="Layers" size={13} />{chapters.length}章・{shownLessons.length}レッスン</span>
+                {totalMin > 0 && <span className="flex items-center gap-1"><Icon name="Clock" size={13} />約{totalMin}分</span>}
+              </div>
             </div>
             {isInstructor && (
               <div className="flex gap-1.5 shrink-0">
@@ -2590,21 +2637,29 @@ function CourseDetailPage({ courseId }) {
                       const hasQuiz = lesson.quiz && (lesson.quiz.questions || []).length > 0;
                       const hasAssignment = lesson.assignment && lesson.assignment.prompt;
                       const qr = quizResults.find((r) => r.uid === authUser.uid && r.lessonId === lesson.id);
-                      const clickable = isInstructor || isEnrolled;
+                      const isLocked = lockedSet.has(lesson.id);
+                      const clickable = isInstructor || (isEnrolled && !isLocked);
                       return (
                         <div key={lesson.id}
                           className={`flex items-center gap-3 px-4 py-3 border-t border-slate-50 first:border-t-0 ${clickable ? 'cursor-pointer hover:bg-indigo-50/40' : 'opacity-70'} transition-colors`}
-                          onClick={() => clickable && nav('lesson', { lessonId: lesson.id })}>
+                          onClick={() => {
+                            if (clickable) { nav('lesson', { lessonId: lesson.id }); }
+                            else if (isLocked) { toast('前のレッスンを完了すると受講できます', 'info'); }
+                          }}>
                           {!isInstructor ? (
                             done
                               ? <Icon name="CheckCircle" size={19} className="text-emerald-500 shrink-0" />
-                              : <Icon name="Circle" size={19} className="text-slate-300 shrink-0" />
+                              : isLocked
+                                ? <Icon name="Lock" size={17} className="text-slate-300 shrink-0" />
+                                : <Icon name="Circle" size={19} className="text-slate-300 shrink-0" />
                           ) : (
                             <span className="w-5 text-center text-[11px] font-bold text-slate-400 shrink-0">{lIdx + 1}</span>
                           )}
                           <div className="min-w-0 flex-1">
-                            <div className="text-sm font-medium text-slate-800 truncate">{lesson.title}</div>
+                            <div className={`text-sm font-medium truncate ${isInstructor && lesson.draft ? 'text-slate-400' : 'text-slate-800'}`}>{lesson.title}</div>
                             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                              {isInstructor && lesson.draft && <span className="text-[10px] text-amber-600 flex items-center gap-0.5 font-bold"><Icon name="Edit2" size={10} />下書き</span>}
+                              {lesson.durationMin > 0 && <span className="text-[10px] text-slate-400 flex items-center gap-0.5"><Icon name="Clock" size={10} />約{lesson.durationMin}分</span>}
                               {(lesson.blocks || []).some((b) => b.type === 'video') && <span className="text-[10px] text-slate-400 flex items-center gap-0.5"><Icon name="Video" size={10} />動画</span>}
                               {(lesson.blocks || []).some((b) => b.type === 'file' || b.type === 'link') && <span className="text-[10px] text-slate-400 flex items-center gap-0.5"><Icon name="Paperclip" size={10} />資料</span>}
                               {hasQuiz && <span className="text-[10px] text-amber-600 flex items-center gap-0.5 font-bold"><Icon name="HelpCircle" size={10} />テスト{qr && qr.passed ? '合格' : qr ? `（${qr.bestScore}点）` : ''}</span>}
@@ -2615,7 +2670,7 @@ function CourseDetailPage({ courseId }) {
                             <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                               <button onClick={() => moveLesson(chLessons, lIdx, -1)} disabled={lIdx === 0} className="p-1.5 rounded-lg text-slate-300 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-30"><Icon name="ArrowUp" size={13} /></button>
                               <button onClick={() => moveLesson(chLessons, lIdx, 1)} disabled={lIdx === chLessons.length - 1} className="p-1.5 rounded-lg text-slate-300 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-30"><Icon name="ArrowDown" size={13} /></button>
-                              <button onClick={() => setLessonModal({ chapterId: ch.id, lesson })} className="p-1.5 rounded-lg text-slate-300 hover:bg-slate-100 hover:text-slate-600" title="名前を変更"><Icon name="Edit2" size={13} /></button>
+                              <button onClick={() => setLessonModal({ chapterId: ch.id, lesson })} className="p-1.5 rounded-lg text-slate-300 hover:bg-slate-100 hover:text-slate-600" title="レッスン設定"><Icon name="Edit2" size={13} /></button>
                               <button onClick={() => setDeletingLesson(lesson)} className="p-1.5 rounded-lg text-slate-300 hover:bg-red-50 hover:text-red-500"><Icon name="Trash2" size={13} /></button>
                             </div>
                           )}
@@ -2681,14 +2736,14 @@ function CourseDetailPage({ courseId }) {
           }} />
       )}
       {lessonModal && (
-        <LessonTitleModal lesson={lessonModal.lesson} onClose={() => setLessonModal(null)} onSave={async (title) => {
+        <LessonTitleModal lesson={lessonModal.lesson} onClose={() => setLessonModal(null)} onSave={async (data) => {
           try {
             if (lessonModal.lesson) {
-              await actions.updateLesson(lessonModal.lesson.id, { title });
-              toast('レッスン名を変更しました');
+              await actions.updateLesson(lessonModal.lesson.id, data);
+              toast('レッスン設定を保存しました');
               setLessonModal(null);
             } else {
-              const id = await actions.createLesson(course, lessonModal.chapterId, title);
+              const id = await actions.createLesson(course, lessonModal.chapterId, data);
               toast('レッスンを追加しました');
               setLessonModal(null);
               nav('lesson', { lessonId: id });
@@ -2717,7 +2772,7 @@ function CertificateModal({ course, onClose }) {
   const completedDates = Object.values((enrollment && enrollment.completedLessons) || {}).map(tsToDate).filter(Boolean);
   const doneDate = completedDates.length ? new Date(Math.max(...completedDates.map((d) => d.getTime()))) : new Date();
   const dateStr = `${doneDate.getFullYear()}年${doneDate.getMonth() + 1}月${doneDate.getDate()}日`;
-  const lessonCount = sortedLessonsOf(course, lessons).length;
+  const lessonCount = visibleLessonsOf(course, lessons).length;
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
@@ -2776,21 +2831,46 @@ function ChapterModal({ chapter, onClose, onSave }) {
 
 function LessonTitleModal({ lesson, onClose, onSave }) {
   const [title, setTitle] = useState(lesson ? lesson.title : '');
+  const [durationMin, setDurationMin] = useState(lesson && lesson.durationMin ? String(lesson.durationMin) : '');
+  const [draft, setDraft] = useState(lesson ? !!lesson.draft : false);
   const [busy, setBusy] = useState(false);
+  const buildData = () => ({
+    title: title.trim(),
+    durationMin: Number(durationMin) > 0 ? Math.round(Number(durationMin)) : null,
+    draft,
+  });
   return (
-    <Modal title={lesson ? 'レッスン名を変更' : 'レッスンを追加'} onClose={onClose} footer={
+    <Modal title={lesson ? 'レッスン設定' : 'レッスンを追加'} onClose={onClose} footer={
       <>
         <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100">キャンセル</button>
-        <button disabled={busy || !title.trim()} onClick={async () => { setBusy(true); try { await onSave(title.trim()); } finally { setBusy(false); } }}
+        <button disabled={busy || !title.trim()} onClick={async () => { setBusy(true); try { await onSave(buildData()); } finally { setBusy(false); } }}
           className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2">
           {busy && <Spinner size={14} />}{lesson ? '保存' : '追加して編集へ'}
         </button>
       </>
     }>
-      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例：あいさつの基本" autoFocus
-        onKeyDown={(e) => { if (e.key === 'Enter' && !isComposingEnter(e) && title.trim()) onSave(title.trim()); }}
-        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
-      {!lesson && <p className="text-xs text-slate-400 mt-2">追加後、レッスン編集画面で本文・動画・資料・テストを設定できます。</p>}
+      <div className="space-y-4">
+        <div>
+          <label className="block text-xs font-bold text-slate-500 mb-1.5">レッスン名 <span className="text-red-500">*</span></label>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例：あいさつの基本" autoFocus
+            onKeyDown={(e) => { if (e.key === 'Enter' && !isComposingEnter(e) && title.trim()) onSave(buildData()); }}
+            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-500 mb-1.5">所要時間の目安（分・任意）</label>
+          <input type="number" min="1" max="999" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} placeholder="例：10"
+            className="w-32 px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
+          <p className="text-[11px] text-slate-400 mt-1.5">設定するとカリキュラムに「約◯分」と表示されます。</p>
+        </div>
+        <label className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 cursor-pointer select-none hover:bg-slate-50">
+          <input type="checkbox" checked={draft} onChange={(e) => setDraft(e.target.checked)} className="w-4 h-4 mt-0.5 rounded accent-indigo-600" />
+          <span>
+            <span className="flex items-center gap-1.5 text-sm font-bold text-slate-700"><Icon name="Edit2" size={14} className="text-amber-500" />下書きにする（受講生に非表示）</span>
+            <span className="block text-xs text-slate-400 mt-0.5">作成途中のレッスンを受講生に見せず、進捗率の計算からも除外します。</span>
+          </span>
+        </label>
+        {!lesson && <p className="text-xs text-slate-400">追加後、レッスン編集画面で本文・動画・資料・テストを設定できます。</p>}
+      </div>
     </Modal>
   );
 }
@@ -2816,11 +2896,22 @@ function LessonPage({ lessonId, initialTab }) {
     );
   }
 
-  const orderedLessons = sortedLessonsOf(course, lessons);
-  const idx = orderedLessons.findIndex((l) => l.id === lessonId);
-  const prevLesson = idx > 0 ? orderedLessons[idx - 1] : null;
-  const nextLesson = idx >= 0 && idx < orderedLessons.length - 1 ? orderedLessons[idx + 1] : null;
+  // 受講生の前後ナビ・番号は下書きを除いた並びで計算する
+  const navLessons = isInstructor ? sortedLessonsOf(course, lessons) : visibleLessonsOf(course, lessons);
+  const idx = navLessons.findIndex((l) => l.id === lessonId);
+  const prevLesson = idx > 0 ? navLessons[idx - 1] : null;
+  const nextLesson = idx >= 0 && idx < navLessons.length - 1 ? navLessons[idx + 1] : null;
   const chapter = (course.chapters || []).find((c) => c.id === lesson.chapterId);
+
+  // 下書きレッスンは受講生に見せない
+  if (!isInstructor && lesson.draft) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-100">
+        <EmptyState icon="FileText" title="このレッスンは準備中です" description="公開までしばらくお待ちください"
+          action={<button onClick={() => nav('course', { courseId: course.id })} className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold">コースページへ</button>} />
+      </div>
+    );
+  }
 
   if (isInstructor) {
     const tabs = [
@@ -2837,7 +2928,11 @@ function LessonPage({ lessonId, initialTab }) {
         </button>
         <div>
           <div className="text-xs text-slate-400 font-bold">{chapter ? chapter.title : ''}</div>
-          <h1 className="text-xl font-bold text-slate-900 mt-0.5">{lesson.title}</h1>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            <h1 className="text-xl font-bold text-slate-900">{lesson.title}</h1>
+            {lesson.draft && <Badge tone="amber"><Icon name="Edit2" size={11} />下書き（受講生に非表示）</Badge>}
+            {lesson.durationMin > 0 && <Badge tone="slate"><Icon name="Clock" size={11} />約{lesson.durationMin}分</Badge>}
+          </div>
         </div>
         <div className="flex gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto">
           {tabs.map((t) => (
@@ -2868,11 +2963,11 @@ function LessonPage({ lessonId, initialTab }) {
   }
 
   // ----- 受講生ビュー -----
-  return <StudentLessonView lesson={lesson} course={course} chapter={chapter} prevLesson={prevLesson} nextLesson={nextLesson} lessonNumber={idx + 1} totalLessons={orderedLessons.length} />;
+  return <StudentLessonView lesson={lesson} course={course} chapter={chapter} prevLesson={prevLesson} nextLesson={nextLesson} lessonNumber={idx + 1} totalLessons={navLessons.length} />;
 }
 
 function StudentLessonView({ lesson, course, chapter, prevLesson, nextLesson, lessonNumber, totalLessons }) {
-  const { authUser, enrollments, quizResults, actions } = useApp();
+  const { authUser, lessons, enrollments, quizResults, actions } = useApp();
   const { nav, back } = useRoute();
   const toast = useToast();
   const [busyComplete, setBusyComplete] = useState(false);
@@ -2889,6 +2984,17 @@ function StudentLessonView({ lesson, course, chapter, prevLesson, nextLesson, le
     return (
       <div className="bg-white rounded-2xl border border-slate-100">
         <EmptyState icon="Lock" title="このレッスンを見るには受講登録が必要です"
+          action={<button onClick={() => nav('course', { courseId: course.id })} className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold">コースページへ</button>} />
+      </div>
+    );
+  }
+
+  // 順次学習モード: 前のレッスンが未完了ならロック
+  if (lockedLessonSet(course, lessons, enrollment).has(lesson.id)) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-100">
+        <EmptyState icon="Lock" title="このレッスンはまだロックされています"
+          description="このコースは順次学習モードです。前のレッスンを完了すると受講できます。"
           action={<button onClick={() => nav('course', { courseId: course.id })} className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold">コースページへ</button>} />
       </div>
     );
@@ -2915,10 +3021,11 @@ function StudentLessonView({ lesson, course, chapter, prevLesson, nextLesson, le
       </button>
 
       <div>
-        <div className="flex items-center gap-2 text-xs text-slate-400 font-bold">
+        <div className="flex items-center gap-2 text-xs text-slate-400 font-bold flex-wrap">
           <span>{chapter ? chapter.title : ''}</span>
           <span>・</span>
           <span>{lessonNumber}/{totalLessons}</span>
+          {lesson.durationMin > 0 && <span className="flex items-center gap-0.5"><Icon name="Clock" size={11} />約{lesson.durationMin}分</span>}
           {isDone && <Badge tone="emerald"><Icon name="Check" size={11} />完了</Badge>}
         </div>
         <h1 className="text-xl font-bold text-slate-900 mt-1">{lesson.title}</h1>
@@ -4263,7 +4370,7 @@ function InstructorProgress({ initialCourseId }) {
     );
   }
 
-  const orderedLessons = sortedLessonsOf(course, lessons);
+  const orderedLessons = visibleLessonsOf(course, lessons);
   const courseEnrollments = enrollments
     .filter((e) => e.courseId === course.id)
     .map((en) => ({ en, student: users.find((u) => u.id === en.uid) }))
@@ -4519,7 +4626,7 @@ function StudentProgress() {
     <div className="space-y-4">
       <h1 className="text-xl font-bold text-slate-900">学習状況</h1>
       {myCourses.map(({ en, course }) => {
-        const orderedLessons = sortedLessonsOf(course, lessons);
+        const orderedLessons = visibleLessonsOf(course, lessons);
         const completed = en.completedLessons || {};
         const p = courseProgressOf(course, lessons, en);
         return (
