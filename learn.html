@@ -200,6 +200,15 @@ function RichText({ text }) {
 }
 
 // CSVダウンロード
+function downloadJSON(filename, obj) {
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
 function downloadCSV(filename, rows) {
   const esc = (v) => {
     const s = String(v == null ? '' : v);
@@ -942,7 +951,7 @@ function AppProvider({ children }) {
   }), [authUser, users, courses, plan, lessons, enrollments, quizResults, comments, submissions, touchEnrollment]);
 
   const value = {
-    authUser, profile, isInstructor, profileError, dataError, brand, plan,
+    authUser, profile, isInstructor, profileError, dataError, brand, plan, settingsDocs,
     users, courses, lessons, enrollments, quizResults, comments, submissions, announcements,
     usersLoaded, actions,
   };
@@ -1720,6 +1729,19 @@ function InstructorDashboard() {
 
   return (
     <>
+      {courses.length === 0 && (
+        <div className="bg-gradient-to-br from-indigo-50 via-slate-50 to-sky-50 border border-indigo-100 rounded-2xl p-5">
+          <h2 className="font-bold text-slate-900 flex items-center gap-2"><Icon name="GraduationCap" size={18} className="text-indigo-500" />ようこそ！3ステップで研修をはじめましょう</h2>
+          <ol className="mt-3 space-y-2 text-sm text-slate-600">
+            <li className="flex items-start gap-2.5"><span className="shrink-0 w-6 h-6 rounded-lg bg-indigo-600 text-white text-xs font-bold flex items-center justify-center">1</span><span><b>コースを作成</b> — 「コース」ページから研修コースを作り、章とレッスンを追加します</span></li>
+            <li className="flex items-start gap-2.5"><span className="shrink-0 w-6 h-6 rounded-lg bg-indigo-600 text-white text-xs font-bold flex items-center justify-center">2</span><span><b>教材とテストを用意</b> — レッスンにテキスト・動画・資料を載せ、理解度テストを設定します</span></li>
+            <li className="flex items-start gap-2.5"><span className="shrink-0 w-6 h-6 rounded-lg bg-indigo-600 text-white text-xs font-bold flex items-center justify-center">3</span><span><b>受講生を招待</b> — コースを公開するか、招待コードを共有しましょう。進捗は「進捗管理」でいつでも確認できます</span></li>
+          </ol>
+          <button onClick={() => nav('courses')} className="mt-4 flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-colors">
+            <Icon name="Plus" size={15} />最初のコースを作成する
+          </button>
+        </div>
+      )}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard icon="Users" label="受講生" value={students.length} tone="sky" />
         <StatCard icon="BookOpen" label="公開コース" value={publishedCourses.length} sub={`全${courses.length}コース`} tone="indigo" />
@@ -4710,6 +4732,96 @@ function StudentDetailModal({ user, onClose }) {
 // ブランド用カラープリセット
 const BRAND_COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6', '#0f172a'];
 
+// データ管理（バックアップ・復元）
+function DataManagementCard() {
+  const { users, courses, lessons, enrollments, quizResults, comments, submissions, announcements, settingsDocs } = useApp();
+  const toast = useToast();
+  const [importing, setImporting] = useState(false);
+  const [pendingImport, setPendingImport] = useState(null); // {data, counts}
+  const fileRef = useRef(null);
+
+  const collections = {
+    [COL.users]: users, [COL.courses]: courses, [COL.lessons]: lessons,
+    [COL.enrollments]: enrollments, [COL.quizResults]: quizResults,
+    [COL.comments]: comments, [COL.submissions]: submissions,
+    [COL.announcements]: announcements, [COL.settings]: settingsDocs,
+  };
+
+  const exportAll = () => {
+    const out = { app: 'hakomana', version: 1, exportedAt: new Date().toISOString(), collections: {} };
+    let total = 0;
+    Object.entries(collections).forEach(([name, arr]) => {
+      out.collections[name] = arr.map(({ id, ...data }) => ({ _id: id, ...data }));
+      total += arr.length;
+    });
+    const d = new Date();
+    const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    downloadJSON(`hakomana-backup-${stamp}.json`, out);
+    toast(`${total}件のデータをエクスポートしました`);
+  };
+
+  const pickFile = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data || data.app !== 'hakomana' || !data.collections) throw new Error('形式が違います');
+      const counts = Object.entries(data.collections).map(([k, v]) => `${k.replace('edu_', '')}: ${(v || []).length}件`).join(' / ');
+      setPendingImport({ data, counts });
+    } catch (err) {
+      console.error(err);
+      toast('バックアップファイルを読み込めませんでした（ハコマナのエクスポートファイルを選択してください）', 'error');
+    }
+  };
+
+  const runImport = async () => {
+    const { data } = pendingImport;
+    setPendingImport(null);
+    setImporting(true);
+    let total = 0;
+    try {
+      for (const [name, docs] of Object.entries(data.collections)) {
+        if (!Object.prototype.hasOwnProperty.call(collections, name)) continue;
+        for (const doc of docs || []) {
+          const { _id, ...fields } = doc;
+          if (!_id) continue;
+          await db.collection(name).doc(_id).set(fields);
+          total++;
+        }
+      }
+      toast(`${total}件のデータを復元しました`);
+    } catch (e) { console.error(e); toast(`復元中にエラーが発生しました（${total}件までは反映済み）`, 'error'); }
+    finally { setImporting(false); }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-3">
+      <div>
+        <h2 className="font-bold text-slate-800 text-sm flex items-center gap-2"><Icon name="Download" size={15} className="text-emerald-500" />データ管理</h2>
+        <p className="text-[11px] text-slate-400 mt-1">全データ（コース・レッスン・進捗・テスト結果など）をJSONファイルとして保存・復元できます。定期的なバックアップや環境移行にご利用ください。</p>
+      </div>
+      <div className="flex gap-2 flex-wrap">
+        <button onClick={exportAll}
+          className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-1.5">
+          <Icon name="Download" size={14} />エクスポート（バックアップ）
+        </button>
+        <input ref={fileRef} type="file" accept="application/json,.json" onChange={pickFile} className="hidden" />
+        <button disabled={importing} onClick={() => fileRef.current && fileRef.current.click()}
+          className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-1.5 disabled:opacity-50">
+          {importing ? <Spinner size={14} /> : <Icon name="Upload" size={14} />}インポート（復元）
+        </button>
+      </div>
+      {pendingImport && (
+        <ConfirmDialog title="バックアップを復元"
+          message={`このバックアップを復元しますか？\n${pendingImport.counts}\n\n同じIDのデータは上書きされます（それ以外の既存データは残ります）。`}
+          onCancel={() => setPendingImport(null)} onConfirm={runImport} />
+      )}
+    </div>
+  );
+}
+
 // ご利用プラン（料金比較 + ライセンスキーでアップグレード）
 function PlanCard() {
   const { plan, actions } = useApp();
@@ -4900,6 +5012,7 @@ function SettingsPage() {
 
       {isInstructor && <PlanCard />}
       {isInstructor && <PlatformSettingsCard />}
+      {isInstructor && <DataManagementCard />}
 
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
         <h2 className="font-bold text-slate-800 text-sm">プロフィール</h2>
