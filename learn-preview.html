@@ -711,6 +711,7 @@ const SVG = {
   Copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
   Download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
   Upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>',
+  Palette: '<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>',
   Search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
   Menu: '<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>',
   Bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
@@ -873,7 +874,75 @@ const COL = {
   comments: 'edu_comments',
   submissions: 'edu_submissions',
   announcements: 'edu_announcements',
+  settings: 'edu_settings',
 };
+
+// ---------- ブランドテーマ（プラットフォーム設定） ----------
+const DEFAULT_BRAND = { siteName: 'ハコマナ', tagline: '研修・教育プラットフォーム', themeColor: '#4f46e5' };
+function hexToRgbArr(hex) {
+  const h = String(hex || '').replace('#', '');
+  const f = h.length === 3 ? h.split('').map((x) => x + x).join('') : h;
+  if (!/^[0-9a-fA-F]{6}$/.test(f)) return null;
+  const n = parseInt(f, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+const _mixRgb = (a, b, w) => a.map((v, i) => Math.round(v * (1 - w) + b[i] * w));
+const _rgbHex = (a) => '#' + a.map((v) => v.toString(16).padStart(2, '0')).join('');
+const _rgbaStr = (a, al) => `rgba(${a[0]},${a[1]},${a[2]},${al})`;
+// 指定色からTailwindのindigo系クラスを上書きするCSSを生成（単一ファイル構成のための実用手法）
+function brandCss(hex) {
+  const base = hexToRgbArr(hex);
+  if (!base || hex.toLowerCase() === DEFAULT_BRAND.themeColor) return '';
+  const W = [255, 255, 255], K = [0, 0, 0];
+  const c500a = _mixRgb(base, W, 0.12);
+  const c500 = _rgbHex(c500a), c600 = _rgbHex(base), c700 = _rgbHex(_mixRgb(base, K, 0.15));
+  const t50 = _rgbHex(_mixRgb(base, W, 0.95)), t100 = _rgbHex(_mixRgb(base, W, 0.88));
+  const t200 = _rgbHex(_mixRgb(base, W, 0.78)), t300 = _rgbHex(_mixRgb(base, W, 0.62)), t400 = _rgbHex(_mixRgb(base, W, 0.4));
+  const t50a = hexToRgbArr(t50);
+  return [
+    `.bg-indigo-600{background-color:${c600}!important}`,
+    `.bg-indigo-500{background-color:${c500}!important}`,
+    `.hover\\:bg-indigo-700:hover{background-color:${c700}!important}`,
+    `.bg-indigo-100{background-color:${t100}!important}`,
+    `.bg-indigo-50{background-color:${t50}!important}`,
+    `.hover\\:bg-indigo-50:hover{background-color:${t50}!important}`,
+    `.hover\\:bg-indigo-50\\/40:hover{background-color:${_rgbaStr(t50a, 0.4)}!important}`,
+    `.hover\\:bg-indigo-50\\/60:hover{background-color:${_rgbaStr(t50a, 0.6)}!important}`,
+    `.text-indigo-600{color:${c600}!important}`,
+    `.text-indigo-500{color:${c500}!important}`,
+    `.text-indigo-700{color:${c700}!important}`,
+    `.text-indigo-100{color:${t100}!important}`,
+    `.hover\\:text-indigo-500:hover{color:${c500}!important}`,
+    `.hover\\:text-indigo-600:hover{color:${c600}!important}`,
+    `.hover\\:text-indigo-700:hover{color:${c700}!important}`,
+    `.hover\\:text-indigo-800:hover{color:${c700}!important}`,
+    `.border-indigo-100{border-color:${t100}!important}`,
+    `.border-indigo-200{border-color:${t200}!important}`,
+    `.border-indigo-600{border-color:${c600}!important}`,
+    `.hover\\:border-indigo-200:hover{border-color:${t200}!important}`,
+    `.hover\\:border-indigo-300:hover{border-color:${t300}!important}`,
+    `.accent-indigo-600{accent-color:${c600}!important}`,
+    `.ring-indigo-500{--tw-ring-color:${c500}!important}`,
+    `.focus\\:ring-indigo-500\\/40:focus{--tw-ring-color:${_rgbaStr(c500a, 0.4)}!important}`,
+    `.focus\\:border-indigo-400:focus{border-color:${t400}!important}`,
+    `.from-indigo-500{--tw-gradient-from:${c500} var(--tw-gradient-from-position)!important}`,
+    `.from-indigo-50{--tw-gradient-from:${t50} var(--tw-gradient-from-position)!important}`,
+    `.to-indigo-500{--tw-gradient-to:${c500} var(--tw-gradient-to-position)!important}`,
+    `.to-purple-600{--tw-gradient-to:${c700} var(--tw-gradient-to-position)!important}`,
+    `.shadow-indigo-500\\/30{--tw-shadow-color:${_rgbaStr(c500a, 0.3)}!important;--tw-shadow:var(--tw-shadow-colored)!important}`,
+  ].join('\n');
+}
+// ヘッダー・ログイン画面共通のロゴ表示
+function BrandLogo({ brand, size = 8, iconSize = 18 }) {
+  if (brand.logoUrl) {
+    return <img src={brand.logoUrl} alt="" className={`w-${size} h-${size} rounded-lg object-contain bg-white border border-slate-100`} />;
+  }
+  return (
+    <div className={`w-${size} h-${size} rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white`}>
+      <Icon name="GraduationCap" size={iconSize} />
+    </div>
+  );
+}
 
 const AppContext = createContext(null);
 const useApp = () => useContext(AppContext);
@@ -888,6 +957,7 @@ function AppProvider({ children }) {
   const [comments, setComments] = useState([]);
   const [submissions, setSubmissions] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
+  const [settingsDocs, setSettingsDocs] = useState([]);
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [profileError, setProfileError] = useState(null);
   const [dataError, setDataError] = useState(null);
@@ -897,6 +967,38 @@ function AppProvider({ children }) {
     const unsub = auth.onAuthStateChanged((u) => setAuthUser(u || null));
     return unsub;
   }, []);
+
+  // プラットフォーム設定（ブランド）はログイン前のログイン画面でも使うため常時購読
+  // ※ルール未設定などで読めない場合は黙ってデフォルトを使う
+  useEffect(() => {
+    const unsub = db.collection(COL.settings).onSnapshot(
+      (snap) => {
+        const arr = [];
+        snap.forEach((d) => { const data = d.data(); if (data) arr.push({ id: d.id, ...data }); });
+        setSettingsDocs(arr);
+      },
+      (err) => { console.warn('edu_settings 購読不可（デフォルトのブランドを使用）', err && err.code); }
+    );
+    return () => { try { unsub(); } catch (e) {} };
+  }, []);
+
+  const brand = useMemo(() => {
+    const s = settingsDocs.find((d) => d.id === 'site') || {};
+    return {
+      siteName: s.siteName || DEFAULT_BRAND.siteName,
+      tagline: s.tagline || DEFAULT_BRAND.tagline,
+      themeColor: s.themeColor || DEFAULT_BRAND.themeColor,
+      logoUrl: s.logoUrl || null,
+    };
+  }, [settingsDocs]);
+
+  // ブランドをページ全体へ反映（タブタイトル・テーマカラーCSS）
+  useEffect(() => {
+    document.title = `${brand.siteName} - ${brand.tagline}`;
+    let el = document.getElementById('hakomana-brand-style');
+    if (!el) { el = document.createElement('style'); el.id = 'hakomana-brand-style'; document.head.appendChild(el); }
+    el.textContent = brandCss(brand.themeColor);
+  }, [brand]);
 
   // プロフィール作成（初回ログイン時）: 最初の登録者は講師、それ以降は受講生
   useEffect(() => {
@@ -1239,6 +1341,11 @@ function AppProvider({ children }) {
       await db.collection(COL.announcements).doc(id).delete();
     },
 
+    // プラットフォーム設定（ブランド）の保存（講師のみ想定）
+    async saveSiteSettings(patch) {
+      await db.collection(COL.settings).doc('site').set({ ...patch, updatedAt: Date.now() }, { merge: true });
+    },
+
     // ファイルアップロード: 本番=Firebase Storage / デモ=DataURL(小さいファイルのみ)
     async uploadFile(file, pathHint) {
       if (IS_DEMO) {
@@ -1261,7 +1368,7 @@ function AppProvider({ children }) {
   }), [authUser, lessons, enrollments, quizResults, comments, submissions, touchEnrollment]);
 
   const value = {
-    authUser, profile, isInstructor, profileError, dataError,
+    authUser, profile, isInstructor, profileError, dataError, brand,
     users, courses, lessons, enrollments, quizResults, comments, submissions, announcements,
     usersLoaded, actions,
   };
@@ -1341,6 +1448,7 @@ const AUTH_ERROR_JA = {
 };
 
 function AuthScreen() {
+  const { brand } = useApp();
   const [mode, setMode] = useState('login'); // login | register
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -1382,11 +1490,15 @@ function AuthScreen() {
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-slate-50 to-sky-50 flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="inline-flex w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 items-center justify-center text-white shadow-lg shadow-indigo-500/30 mb-4">
-            <Icon name="GraduationCap" size={34} />
-          </div>
-          <h1 className="text-2xl font-bold text-slate-900">ハコマナ</h1>
-          <p className="text-sm text-slate-500 mt-1">研修・教育プラットフォーム</p>
+          {brand.logoUrl ? (
+            <img src={brand.logoUrl} alt="" className="inline-block w-16 h-16 rounded-2xl object-contain bg-white border border-slate-100 shadow-lg mb-4" />
+          ) : (
+            <div className="inline-flex w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 items-center justify-center text-white shadow-lg shadow-indigo-500/30 mb-4">
+              <Icon name="GraduationCap" size={34} />
+            </div>
+          )}
+          <h1 className="text-2xl font-bold text-slate-900">{brand.siteName}</h1>
+          <p className="text-sm text-slate-500 mt-1">{brand.tagline}</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
@@ -1455,7 +1567,7 @@ function App() {
 }
 
 function AppShell() {
-  const { profile, isInstructor, actions, dataError } = useApp();
+  const { profile, isInstructor, actions, dataError, brand } = useApp();
   const toast = useToast();
   const [route, setRoute] = useState({ page: 'home' });
   const [history, setHistory] = useState([]);
@@ -1519,10 +1631,8 @@ function AppShell() {
         <header className={`sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200 ${IS_DEMO ? '' : ''}`}>
           <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
             <button onClick={() => nav('home')} className="flex items-center gap-2.5 shrink-0">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white">
-                <Icon name="GraduationCap" size={18} />
-              </div>
-              <span className="font-bold text-slate-900 hidden sm:block">ハコマナ</span>
+              <BrandLogo brand={brand} />
+              <span className="font-bold text-slate-900 hidden sm:block">{brand.siteName}</span>
             </button>
             <div className="flex items-center gap-2 min-w-0">
               <Badge tone={isInstructor ? 'indigo' : 'sky'}>
@@ -2811,7 +2921,7 @@ function CourseDetailPage({ courseId }) {
 
 // 修了証モーダル（印刷対応）
 function CertificateModal({ course, onClose }) {
-  const { authUser, profile, users, enrollments, lessons } = useApp();
+  const { authUser, profile, users, enrollments, lessons, brand } = useApp();
   const enrollment = enrollments.find((e) => e.uid === authUser.uid && e.courseId === course.id);
   const instructor = users.find((u) => u.id === course.createdBy);
   const completedDates = Object.values((enrollment && enrollment.completedLessons) || {}).map(tsToDate).filter(Boolean);
@@ -2839,7 +2949,7 @@ function CertificateModal({ course, onClose }) {
               あなたは「<span className="font-bold text-slate-800">{course.title}</span>」の全カリキュラム（全{lessonCount}レッスン）を修了されました。その努力と成果をここに証します。
             </p>
             <div className="text-sm text-slate-700 font-bold">修了日　{dateStr}</div>
-            <div className="text-xs text-slate-400 mt-5">発行：{instructor ? instructor.displayName : '講師'}｜ハコマナ 研修・教育プラットフォーム</div>
+            <div className="text-xs text-slate-400 mt-5">発行：{instructor ? instructor.displayName : '講師'}｜{brand.siteName} {brand.tagline}</div>
           </div>
         </div>
         <div className="flex justify-center gap-2 mt-4">
@@ -4940,6 +5050,112 @@ function StudentDetailModal({ user, onClose }) {
 }
 
 // ========== 設定 ==========
+// ブランド用カラープリセット
+const BRAND_COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6', '#0f172a'];
+
+function PlatformSettingsCard() {
+  const { brand, actions } = useApp();
+  const toast = useToast();
+  const [siteName, setSiteName] = useState(brand.siteName);
+  const [tagline, setTagline] = useState(brand.tagline);
+  const [themeColor, setThemeColor] = useState(brand.themeColor);
+  const [logoUrl, setLogoUrl] = useState(brand.logoUrl);
+  const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef(null);
+
+  useEffect(() => { setSiteName(brand.siteName); setTagline(brand.tagline); setThemeColor(brand.themeColor); setLogoUrl(brand.logoUrl); }, [brand]);
+
+  const dirty = siteName !== brand.siteName || tagline !== brand.tagline || themeColor !== brand.themeColor || (logoUrl || null) !== (brand.logoUrl || null);
+
+  const pickLogo = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast('画像ファイルを選択してください', 'error'); return; }
+    setUploading(true);
+    try {
+      const up = await actions.uploadFile(file, 'branding');
+      setLogoUrl(up.url);
+      toast('ロゴを読み込みました。「保存」で反映されます');
+    } catch (err) { console.error(err); toast(err.message || 'アップロードに失敗しました', 'error'); }
+    finally { setUploading(false); }
+  };
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await actions.saveSiteSettings({
+        siteName: siteName.trim() || DEFAULT_BRAND.siteName,
+        tagline: tagline.trim() || DEFAULT_BRAND.tagline,
+        themeColor: hexToRgbArr(themeColor) ? themeColor : DEFAULT_BRAND.themeColor,
+        logoUrl: logoUrl || null,
+      });
+      toast('プラットフォーム設定を保存しました');
+    } catch (e) { console.error(e); toast('保存に失敗しました', 'error'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
+      <div>
+        <h2 className="font-bold text-slate-800 text-sm flex items-center gap-2"><Icon name="Palette" size={15} className="text-indigo-500" />プラットフォーム設定</h2>
+        <p className="text-[11px] text-slate-400 mt-1">名称・ロゴ・テーマカラーを自社仕様にカスタマイズできます。全ユーザーの画面（ログイン画面・修了証含む）に反映されます。</p>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-bold text-slate-500 mb-1.5">プラットフォーム名</label>
+          <input value={siteName} onChange={(e) => setSiteName(e.target.value)} placeholder={DEFAULT_BRAND.siteName} maxLength={30}
+            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-500 mb-1.5">サブタイトル</label>
+          <input value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder={DEFAULT_BRAND.tagline} maxLength={40}
+            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs font-bold text-slate-500 mb-1.5">テーマカラー</label>
+        <div className="flex items-center gap-2 flex-wrap">
+          {BRAND_COLORS.map((c) => (
+            <button key={c} onClick={() => setThemeColor(c)}
+              className={`w-8 h-8 rounded-full transition-transform ${themeColor.toLowerCase() === c ? 'ring-2 ring-offset-2 ring-slate-400 scale-110' : 'hover:scale-105'}`}
+              style={{ background: c }} title={c} />
+          ))}
+          <label className="flex items-center gap-1.5 cursor-pointer text-xs text-slate-500 font-bold border border-slate-200 rounded-lg px-2.5 py-1.5 hover:bg-slate-50">
+            <input type="color" value={hexToRgbArr(themeColor) ? themeColor : '#4f46e5'} onChange={(e) => setThemeColor(e.target.value)} className="w-6 h-6 rounded cursor-pointer border-0 p-0 bg-transparent" />
+            自由に選ぶ
+          </label>
+        </div>
+        <p className="text-[11px] text-slate-400 mt-1.5">ボタンやリンクなどアプリ全体の基本色が変わります。</p>
+      </div>
+      <div>
+        <label className="block text-xs font-bold text-slate-500 mb-1.5">ロゴ画像</label>
+        <div className="flex items-center gap-3 flex-wrap">
+          {logoUrl
+            ? <img src={logoUrl} alt="ロゴ" className="w-12 h-12 rounded-xl object-contain bg-white border border-slate-200" />
+            : <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white"><Icon name="GraduationCap" size={24} /></div>}
+          <input ref={fileRef} type="file" accept="image/*" onChange={pickLogo} className="hidden" />
+          <button disabled={uploading} onClick={() => fileRef.current && fileRef.current.click()}
+            className="px-3.5 py-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-1.5 disabled:opacity-50">
+            {uploading ? <Spinner size={13} /> : <Icon name="Upload" size={13} />}画像を選ぶ
+          </button>
+          {logoUrl && (
+            <button onClick={() => setLogoUrl(null)} className="px-3.5 py-2 rounded-lg text-xs font-bold text-red-500 hover:bg-red-50">ロゴを削除</button>
+          )}
+        </div>
+        <p className="text-[11px] text-slate-400 mt-1.5">正方形に近いPNG/JPG推奨。{IS_DEMO ? 'デモ版は300KBまで。' : ''}未設定の場合は標準アイコンを表示します。</p>
+      </div>
+      <div className="flex justify-end pt-1">
+        <button disabled={busy || !dirty} onClick={save}
+          className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 disabled:opacity-40 flex items-center gap-2">
+          {busy && <Spinner size={14} />}保存
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SettingsPage() {
   const { profile, isInstructor, actions } = useApp();
   const toast = useToast();
@@ -4951,6 +5167,8 @@ function SettingsPage() {
   return (
     <div className="space-y-4 max-w-xl">
       <h1 className="text-xl font-bold text-slate-900">設定</h1>
+
+      {isInstructor && <PlatformSettingsCard />}
 
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
         <h2 className="font-bold text-slate-800 text-sm">プロフィール</h2>
@@ -4991,9 +5209,13 @@ function SettingsPage() {
         {IS_DEMO && <p className="text-[11px] text-slate-400 mt-2 text-center">デモ版のためログアウトするとサンプルデータが初期状態に戻ります</p>}
       </div>
 
-      <div className="text-center text-[11px] text-slate-300 pt-2">ハコマナ — 研修・教育プラットフォーム</div>
+      <SettingsFooterBrand />
     </div>
   );
+}
+function SettingsFooterBrand() {
+  const { brand } = useApp();
+  return <div className="text-center text-[11px] text-slate-300 pt-2">{brand.siteName} — {brand.tagline}</div>;
 }
 
 // ========== ルート ==========

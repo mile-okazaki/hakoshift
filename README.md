@@ -13,11 +13,12 @@
 
 ## 🎓 ハコマナ — 研修・教育プラットフォーム
 
-オンライン講座プラットフォーム「オンクラス」を参考にした、社内研修・教育用のプラットフォームです。
+オンライン講座プラットフォーム「オンクラス」を参考にした研修・教育用のプラットフォームです。配達チームに限らず、**社内研修・スクール・講座運営などあらゆる教育用途**に使えます。
 
 ### 主な機能
 
 **講師（管理者）**
+- **プラットフォーム設定（ホワイトレーベル）**：プラットフォーム名・サブタイトル・テーマカラー・会社ロゴを自由にカスタマイズ。ログイン画面・ヘッダー・修了証・ブラウザタブまで全体に反映され、自社ブランドのプラットフォームとして運用できます
 - コース作成（アイコン・カラー・公開/非公開・招待コード）
 - 章（チャプター）→ レッスンのカリキュラム構成、並び替え
 - **順次学習モード**：前のレッスンを完了するまで次のレッスンをロック（コース設定でON/OFF）
@@ -110,6 +111,11 @@ Firebase Console → Firestore Database → ルール に、**既存のハコシ
       allow read: if eduSignedIn();
       allow create: if eduSignedIn() && request.resource.data.uid == request.auth.uid;
       allow delete: if eduSignedIn() && (resource.data.uid == request.auth.uid || isEduInstructor());
+    }
+    match /edu_settings/{id} {
+      // ブランド設定はログイン画面でも表示するため誰でも読み取り可（機密情報は保存しないこと）
+      allow read: if true;
+      allow write: if isEduInstructor();
     }
 ```
 
