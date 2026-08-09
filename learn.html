@@ -417,6 +417,28 @@ const COL = {
 
 // ---------- ブランドテーマ（プラットフォーム設定） ----------
 const DEFAULT_BRAND = { siteName: 'ハコマナ', tagline: '研修・教育プラットフォーム', themeColor: '#4f46e5' };
+
+// ---------- 有料プラン ----------
+// 販売者向け: 価格・購入導線は運用に合わせて変更してください（README「有料プランの運用」参照）
+const PLAN_CONTACT_URL = 'mailto:mile.okazaki.0813@outlook.jp?subject=%E3%83%97%E3%83%A9%E3%83%B3%E8%B3%BC%E5%85%A5%E3%81%AB%E3%81%A4%E3%81%84%E3%81%A6';
+const PLAN_ORDER = ['free', 'pro', 'business'];
+const PLANS = {
+  free: { name: 'フリー', price: '¥0', priceNote: 'ずっと無料', maxPublishedCourses: 3, maxStudents: 30, whiteLabel: false },
+  pro: { name: 'プロ', price: '¥9,800', priceNote: '月額（税別）', maxPublishedCourses: Infinity, maxStudents: 300, whiteLabel: true },
+  business: { name: 'ビジネス', price: '¥29,800', priceNote: '月額（税別）', maxPublishedCourses: Infinity, maxStudents: Infinity, whiteLabel: true },
+};
+const fmtLimit = (n, unit) => (n === Infinity ? '無制限' : `${n}${unit}`);
+// ライセンスキー: HAKO-PRO-1234-56 / HAKO-BIZ-1234-56 形式（チェックサム付き）
+// ※クライアントサイドの簡易な区分です。厳密なライセンス管理が必要な場合はサーバー側での検証をご検討ください
+function validateLicenseKey(key) {
+  const m = /^HAKO-(PRO|BIZ)-(\d{4})-(\d{2})$/.exec(String(key || '').trim().toUpperCase());
+  if (!m) return null;
+  const body = `HAKO-${m[1]}-${m[2]}`;
+  let sum = 0;
+  for (let i = 0; i < body.length; i++) sum += body.charCodeAt(i) * (i + 1);
+  if (String(((sum * 7 + 13) % 90) + 10) !== m[3]) return null;
+  return m[1] === 'PRO' ? 'pro' : 'business';
+}
 function hexToRgbArr(hex) {
   const h = String(hex || '').replace('#', '');
   const f = h.length === 3 ? h.split('').map((x) => x + x).join('') : h;
@@ -519,6 +541,11 @@ function AppProvider({ children }) {
     );
     return () => { try { unsub(); } catch (e) {} };
   }, []);
+
+  const plan = useMemo(() => {
+    const p = (settingsDocs.find((d) => d.id === 'site') || {}).plan;
+    return PLANS[p] ? p : 'free';
+  }, [settingsDocs]);
 
   const brand = useMemo(() => {
     const s = settingsDocs.find((d) => d.id === 'site') || {};
@@ -743,6 +770,13 @@ function AppProvider({ children }) {
 
     async joinCourse(courseId) {
       if (!authUser) return;
+      // プランの受講生上限: 初めて受講するユーザーが上限超過なら参加不可
+      if (!enrollments.some((e) => e.uid === authUser.uid)) {
+        const active = new Set(enrollments.filter((e) => users.some((u) => u.id === e.uid && u.role === 'student')).map((e) => e.uid));
+        if (active.size >= PLANS[plan].maxStudents) {
+          throw new Error(`現在のプラン（${PLANS[plan].name}）の受講生上限（${PLANS[plan].maxStudents}人）に達しています。講師にお問い合わせください。`);
+        }
+      }
       const id = eid(authUser.uid, courseId);
       const snap = await db.collection(COL.enrollments).doc(id).get();
       if (!snap.exists) {
@@ -905,10 +939,10 @@ function AppProvider({ children }) {
       const url = await snap.ref.getDownloadURL();
       return { url, name: file.name, size: file.size, mime: file.type };
     },
-  }), [authUser, lessons, enrollments, quizResults, comments, submissions, touchEnrollment]);
+  }), [authUser, users, courses, plan, lessons, enrollments, quizResults, comments, submissions, touchEnrollment]);
 
   const value = {
-    authUser, profile, isInstructor, profileError, dataError, brand,
+    authUser, profile, isInstructor, profileError, dataError, brand, plan,
     users, courses, lessons, enrollments, quizResults, comments, submissions, announcements,
     usersLoaded, actions,
   };
@@ -1774,7 +1808,7 @@ const COURSE_EMOJIS = ['📘', '📦', '🚚', '🛡️', '💼', '🧭', '📊'
 const COURSE_COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#ec4899', '#64748b'];
 
 function CourseModal({ course, onClose, onSave }) {
-  const { courses } = useApp();
+  const { courses, plan } = useApp();
   const existingCategories = [...new Set(courses.map((c) => c.category).filter(Boolean))];
   const [title, setTitle] = useState(course ? course.title : '');
   const [description, setDescription] = useState(course ? course.description : '');
@@ -1787,12 +1821,15 @@ function CourseModal({ course, onClose, onSave }) {
   const [archived, setArchived] = useState(course ? !!course.archived : false);
   const [deadline, setDeadline] = useState(course && course.deadline ? course.deadline : '');
   const [busy, setBusy] = useState(false);
+  // プランの公開コース数上限（既に公開中のコースの再保存は許可）
+  const publishedOthers = courses.filter((c) => c.published && !c.archived && (!course || c.id !== course.id)).length;
+  const publishBlocked = published && !archived && !(course && course.published) && publishedOthers >= PLANS[plan].maxPublishedCourses;
   return (
     <Modal title={course ? 'コースを編集' : '新しいコースを作成'} onClose={onClose} footer={
       <>
         <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100">キャンセル</button>
         <button
-          disabled={busy || !title.trim()}
+          disabled={busy || !title.trim() || publishBlocked}
           onClick={async () => { setBusy(true); try { await onSave({ title: title.trim(), description: description.trim(), emoji, color, published, certificateEnabled, sequential, category: category.trim() || null, archived, deadline: deadline || null }); } finally { setBusy(false); } }}
           className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2">
           {busy && <Spinner size={14} />}{course ? '保存' : '作成'}
@@ -1843,6 +1880,9 @@ function CourseModal({ course, onClose, onSave }) {
           <span>
             <span className="flex items-center gap-1.5 text-sm font-bold text-slate-700"><Icon name="Globe" size={14} className="text-emerald-500" />公開する</span>
             <span className="block text-xs text-slate-400 mt-0.5">公開すると受講生のコース一覧に表示されます。非公開でも招待コードで参加できます。</span>
+            {publishBlocked && (
+              <span className="block text-xs text-red-500 font-bold mt-1.5">現在のプラン（{PLANS[plan].name}）で公開できるコースは{PLANS[plan].maxPublishedCourses}件までです。設定の「ご利用プラン」からアップグレードしてください。</span>
+            )}
           </span>
         </label>
         <label className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 cursor-pointer select-none hover:bg-slate-50">
@@ -1907,7 +1947,7 @@ function JoinByCodeModal({ onClose }) {
       toast(`「${c.title}」に参加しました`);
       onClose();
       nav('course', { courseId: c.id });
-    } catch (e) { console.error(e); setError('参加に失敗しました'); }
+    } catch (e) { console.error(e); setError(e.message || '参加に失敗しました'); }
     finally { setBusy(false); }
   };
   return (
@@ -2286,7 +2326,7 @@ function CourseDetailPage({ courseId }) {
                 <button disabled={busyJoin} onClick={async () => {
                   setBusyJoin(true);
                   try { await actions.joinCourse(courseId); toast('受講を開始しました'); }
-                  catch (e) { console.error(e); toast('受講開始に失敗しました', 'error'); }
+                  catch (e) { console.error(e); toast(e.message || '受講開始に失敗しました', 'error'); }
                   finally { setBusyJoin(false); }
                 }} className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50">
                   {busyJoin ? <Spinner size={15} /> : <Icon name="Play" size={15} />}このコースを受講する
@@ -4389,7 +4429,8 @@ function InstructorProgress({ initialCourseId }) {
 
 // 受講生の一括割当モーダル（講師）
 function AssignStudentsModal({ course, onClose, onAssign }) {
-  const { users, enrollments } = useApp();
+  const { users, enrollments, plan } = useApp();
+  const toast = useToast();
   const enrolledIds = new Set(enrollments.filter((e) => e.courseId === course.id).map((e) => e.uid));
   const candidates = users
     .filter((u) => u.role === 'student' && !enrolledIds.has(u.id))
@@ -4402,7 +4443,15 @@ function AssignStudentsModal({ course, onClose, onAssign }) {
       <>
         <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100">キャンセル</button>
         <button disabled={busy || ids.length === 0}
-          onClick={async () => { setBusy(true); try { await onAssign(ids); } finally { setBusy(false); } }}
+          onClick={async () => {
+            const active = new Set(enrollments.filter((e) => users.some((u) => u.id === e.uid && u.role === 'student')).map((e) => e.uid));
+            const newActive = ids.filter((id) => !active.has(id)).length;
+            if (active.size + newActive > PLANS[plan].maxStudents) {
+              toast(`現在のプラン（${PLANS[plan].name}）では受講生は${PLANS[plan].maxStudents}人までです`, 'error');
+              return;
+            }
+            setBusy(true); try { await onAssign(ids); } finally { setBusy(false); }
+          }}
           className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2">
           {busy && <Spinner size={14} />}追加する{ids.length > 0 ? `（${ids.length}名）` : ''}
         </button>
@@ -4661,8 +4710,68 @@ function StudentDetailModal({ user, onClose }) {
 // ブランド用カラープリセット
 const BRAND_COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6', '#0f172a'];
 
+// ご利用プラン（料金比較 + ライセンスキーでアップグレード）
+function PlanCard() {
+  const { plan, actions } = useApp();
+  const toast = useToast();
+  const [key, setKey] = useState('');
+  const [busy, setBusy] = useState(false);
+  const applyKey = async () => {
+    const target = validateLicenseKey(key);
+    if (!target) { toast('無効なライセンスキーです', 'error'); return; }
+    setBusy(true);
+    try { await actions.saveSiteSettings({ plan: target }); toast(`${PLANS[target].name}プランを有効化しました！🎉`); setKey(''); }
+    catch (e) { console.error(e); toast('適用に失敗しました', 'error'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h2 className="font-bold text-slate-800 text-sm flex items-center gap-2"><Icon name="Award" size={15} className="text-amber-500" />ご利用プラン</h2>
+        <Badge tone={plan === 'free' ? 'slate' : plan === 'pro' ? 'indigo' : 'amber'}>現在のプラン：{PLANS[plan].name}</Badge>
+      </div>
+      <div className="grid sm:grid-cols-3 gap-3">
+        {PLAN_ORDER.map((p) => {
+          const pl = PLANS[p];
+          const current = p === plan;
+          return (
+            <div key={p} className={`rounded-xl p-4 ${current ? 'border-2 border-indigo-600 bg-indigo-50/40' : 'border border-slate-200'}`}>
+              <div className="text-sm font-bold text-slate-800">{pl.name}{current && <span className="ml-1.5 text-[10px] text-indigo-600">利用中</span>}</div>
+              <div className="mt-1"><span className="text-xl font-bold text-slate-900">{pl.price}</span><span className="text-[10px] text-slate-400 ml-1">{pl.priceNote}</span></div>
+              <ul className="mt-3 space-y-1.5 text-[11px] text-slate-600">
+                <li className="flex items-center gap-1"><Icon name="Check" size={11} className="text-emerald-500 shrink-0" />公開コース {fmtLimit(pl.maxPublishedCourses, '件')}</li>
+                <li className="flex items-center gap-1"><Icon name="Check" size={11} className="text-emerald-500 shrink-0" />受講生 {fmtLimit(pl.maxStudents, '人')}</li>
+                <li className="flex items-center gap-1"><Icon name="Check" size={11} className="text-emerald-500 shrink-0" />テスト・課題・進捗・修了証</li>
+                <li className={`flex items-center gap-1 ${pl.whiteLabel ? '' : 'text-slate-300'}`}>
+                  <Icon name={pl.whiteLabel ? 'Check' : 'X'} size={11} className={`shrink-0 ${pl.whiteLabel ? 'text-emerald-500' : 'text-slate-300'}`} />ホワイトレーベル（名称/ロゴ/配色）
+                </li>
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+      <div className="bg-slate-50 rounded-xl p-4 space-y-2.5">
+        <div className="text-xs font-bold text-slate-600">アップグレード</div>
+        <div className="flex gap-2 flex-wrap">
+          <input value={key} onChange={(e) => setKey(e.target.value)} placeholder="HAKO-PRO-XXXX-XX"
+            onKeyDown={(e) => { if (e.key === 'Enter' && !isComposingEnter(e) && key.trim()) applyKey(); }}
+            className="flex-1 min-w-[180px] px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
+          <button disabled={busy || !key.trim()} onClick={applyKey}
+            className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 disabled:opacity-40 flex items-center gap-1.5">
+            {busy && <Spinner size={13} />}適用
+          </button>
+        </div>
+        <a href={PLAN_CONTACT_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800">
+          <Icon name="ExternalLink" size={13} />プランの購入・お問い合わせはこちら
+        </a>
+        <p className="text-[11px] text-slate-400">ご購入後にライセンスキーが発行されます。キーを入力するとその場でプランが切り替わります。</p>
+      </div>
+    </div>
+  );
+}
+
 function PlatformSettingsCard() {
-  const { brand, actions } = useApp();
+  const { brand, actions, plan } = useApp();
   const toast = useToast();
   const [siteName, setSiteName] = useState(brand.siteName);
   const [tagline, setTagline] = useState(brand.tagline);
@@ -4675,6 +4784,19 @@ function PlatformSettingsCard() {
   useEffect(() => { setSiteName(brand.siteName); setTagline(brand.tagline); setThemeColor(brand.themeColor); setLogoUrl(brand.logoUrl); }, [brand]);
 
   const dirty = siteName !== brand.siteName || tagline !== brand.tagline || themeColor !== brand.themeColor || (logoUrl || null) !== (brand.logoUrl || null);
+
+  if (!PLANS[plan].whiteLabel) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+        <h2 className="font-bold text-slate-800 text-sm flex items-center gap-2"><Icon name="Palette" size={15} className="text-indigo-500" />プラットフォーム設定</h2>
+        <div className="mt-3 bg-slate-50 rounded-xl p-5 text-center">
+          <Icon name="Lock" size={22} className="text-slate-300 mx-auto mb-2" />
+          <p className="text-sm font-bold text-slate-700">プロプラン以上で利用できます</p>
+          <p className="text-xs text-slate-400 mt-1">プラットフォーム名・ロゴ・テーマカラーを自社ブランドにカスタマイズして、自社のプラットフォームとして運用できます。</p>
+        </div>
+      </div>
+    );
+  }
 
   const pickLogo = async (e) => {
     const file = e.target.files && e.target.files[0];
@@ -4776,6 +4898,7 @@ function SettingsPage() {
     <div className="space-y-4 max-w-xl">
       <h1 className="text-xl font-bold text-slate-900">設定</h1>
 
+      {isInstructor && <PlanCard />}
       {isInstructor && <PlatformSettingsCard />}
 
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
