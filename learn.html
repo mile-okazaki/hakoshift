@@ -683,7 +683,7 @@ function AppProvider({ children }) {
       await touchEnrollment(courseId, { completedLessons: completed });
     },
 
-    async submitQuizResult(lesson, score, passed, essayAnswers) {
+    async submitQuizResult(lesson, score, passed, essayAnswers, lastAnswers) {
       if (!authUser) return;
       const id = eid(authUser.uid, lesson.id);
       const prev = quizResults.find((r) => r.id === id);
@@ -693,6 +693,7 @@ function AppProvider({ children }) {
         uid: authUser.uid, lessonId: lesson.id, courseId: lesson.courseId,
         attempts: ((prev && prev.attempts) || 0) + 1,
         lastScore: score, bestScore,
+        lastAnswers: lastAnswers || ((prev && prev.lastAnswers) || {}),
         passed: !!((prev && prev.passed) || passed),
         firstAttemptAt: (prev && prev.firstAttemptAt) || Date.now(),
         essayAnswers: hasNewEssay ? essayAnswers : ((prev && prev.essayAnswers) || {}),
@@ -2813,7 +2814,7 @@ function QuizSection({ lesson }) {
     setBusy(true);
     const essayAnswers = {};
     essayQuestions.forEach((q) => { if ((essayTexts[q.id] || '').trim()) essayAnswers[q.id] = essayTexts[q.id].trim(); });
-    try { await actions.submitQuizResult(lesson, r.score, r.passed, essayAnswers); }
+    try { await actions.submitQuizResult(lesson, r.score, r.passed, essayAnswers, answers); }
     catch (e) { console.error(e); toast('結果の保存に失敗しました', 'error'); }
     finally { setBusy(false); }
     window.scrollTo(0, 0);
@@ -3805,8 +3806,60 @@ function QuizResultsTab({ lesson }) {
     );
   }
 
+  // 設問別の正答率（最終回答データを持つ受験者が対象。自動採点問題のみ）
+  const autoQuestions = questions.filter((q) => q.type !== 'essay');
+  const answeredResults = lessonResults.filter((r) => r.lastAnswers && Object.keys(r.lastAnswers).length > 0);
+  const questionStats = autoQuestions.map((q) => {
+    const withAns = answeredResults.filter((r) => (r.lastAnswers[q.id] || []).length > 0);
+    const correctKey = (q.choices || []).filter((c) => c.correct).map((c) => c.id).sort().join('|');
+    const okCount = withAns.filter((r) => [...(r.lastAnswers[q.id] || [])].sort().join('|') === correctKey).length;
+    const choiceCounts = {};
+    withAns.forEach((r) => (r.lastAnswers[q.id] || []).forEach((cid) => { choiceCounts[cid] = (choiceCounts[cid] || 0) + 1; }));
+    return { q, n: withAns.length, okCount, rate: withAns.length ? Math.round((okCount / withAns.length) * 100) : null, choiceCounts };
+  });
+  const worstRate = Math.min(...questionStats.filter((s) => s.rate != null).map((s) => s.rate), 101);
+
   return (
     <div className="space-y-3">
+      {questionStats.some((s) => s.rate != null) && (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+          <div className="flex items-center gap-2 mb-1">
+            <Icon name="BarChart" size={16} className="text-indigo-500" />
+            <h3 className="font-bold text-slate-800 text-sm">設問別の正答率</h3>
+            <span className="text-[11px] text-slate-400">最終回答のある{answeredResults.length}人分</span>
+          </div>
+          <p className="text-[11px] text-slate-400 mb-4">正答率が低い設問は、レッスン本文の説明を見直すサインです。</p>
+          <div className="space-y-4">
+            {questionStats.map(({ q, n, okCount, rate, choiceCounts }, qi) => (
+              <div key={q.id}>
+                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <span className="shrink-0 w-5 h-5 rounded bg-slate-100 text-slate-500 text-[11px] font-bold flex items-center justify-center">{qi + 1}</span>
+                  <span className="text-sm font-medium text-slate-800 flex-1 min-w-0">{q.text}</span>
+                  {rate != null && rate === worstRate && worstRate < 100 && <Badge tone="red">要注意</Badge>}
+                  <span className={`text-sm font-bold shrink-0 ${rate == null ? 'text-slate-300' : rate >= 80 ? 'text-emerald-600' : rate >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
+                    {rate == null ? '—' : `${rate}%`}
+                  </span>
+                </div>
+                {rate != null && (
+                  <>
+                    <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden mb-1.5">
+                      <div className={`h-full rounded-full ${rate >= 80 ? 'bg-emerald-500' : rate >= 50 ? 'bg-amber-400' : 'bg-red-500'}`} style={{ width: `${rate}%` }} />
+                    </div>
+                    <div className="text-[11px] text-slate-400 mb-1">{n}人中{okCount}人正解</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(q.choices || []).map((c) => (
+                        <span key={c.id} className={`text-[11px] px-2 py-0.5 rounded-full ${c.correct ? 'bg-emerald-50 text-emerald-700 font-bold' : 'bg-slate-50 text-slate-500'}`}>
+                          {c.correct && '✓ '}{c.text}：{choiceCounts[c.id] || 0}人
+                        </span>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {lessonResults.map((r) => {
         const student = users.find((u) => u.id === r.uid);
         return (
