@@ -638,12 +638,13 @@ function AppProvider({ children }) {
       await db.collection(COL.users).doc(uid).set({ role }, { merge: true });
     },
 
-    async createCourse({ title, description, emoji, color, published, certificateEnabled, deadline }) {
+    async createCourse({ title, description, emoji, color, published, certificateEnabled, sequential, deadline, category }) {
       const id = genId('c');
       const inviteCode = Math.random().toString(36).slice(2, 8).toUpperCase();
       await db.collection(COL.courses).doc(id).set({
         title, description: description || '', emoji: emoji || '📘', color: color || '#4f46e5',
-        published: !!published, certificateEnabled: !!certificateEnabled, deadline: deadline || null,
+        published: !!published, certificateEnabled: !!certificateEnabled, sequential: !!sequential, deadline: deadline || null,
+        category: category || null, archived: false,
         inviteCode, chapters: [],
         createdBy: authUser ? authUser.uid : '', createdAt: Date.now(), updatedAt: Date.now(),
       });
@@ -676,6 +677,7 @@ function AppProvider({ children }) {
         published: false,
         certificateEnabled: !!course.certificateEnabled,
         sequential: !!course.sequential,
+        category: course.category || null, archived: false,
         deadline: null,
         inviteCode: Math.random().toString(36).slice(2, 8).toUpperCase(),
         chapters: newChapters,
@@ -1438,7 +1440,7 @@ function StudentDashboard() {
   const myEnrollments = enrollments.filter((e) => e.uid === authUser.uid);
   const myCourses = myEnrollments
     .map((en) => ({ en, course: courses.find((c) => c.id === en.courseId) }))
-    .filter((x) => x.course);
+    .filter((x) => x.course && !x.course.archived);
 
   const totalDone = myEnrollments.reduce((sum, en) => sum + Object.keys(en.completedLessons || {}).length, 0);
   const myCourseIds = new Set(myEnrollments.map((e) => e.courseId));
@@ -1552,6 +1554,7 @@ function CourseProgressOverview() {
   const { users, courses, lessons, enrollments } = useApp();
   const { nav } = useRoute();
   const rows = useMemo(() => courses
+    .filter((c) => !c.archived)
     .map((c) => {
       const ens = enrollments.filter((e) => e.courseId === c.id && users.some((u) => u.id === e.uid && u.role === 'student'));
       const avg = ens.length
@@ -1771,6 +1774,8 @@ const COURSE_EMOJIS = ['📘', '📦', '🚚', '🛡️', '💼', '🧭', '📊'
 const COURSE_COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#ec4899', '#64748b'];
 
 function CourseModal({ course, onClose, onSave }) {
+  const { courses } = useApp();
+  const existingCategories = [...new Set(courses.map((c) => c.category).filter(Boolean))];
   const [title, setTitle] = useState(course ? course.title : '');
   const [description, setDescription] = useState(course ? course.description : '');
   const [emoji, setEmoji] = useState(course ? course.emoji : '📘');
@@ -1778,6 +1783,8 @@ function CourseModal({ course, onClose, onSave }) {
   const [published, setPublished] = useState(course ? !!course.published : false);
   const [certificateEnabled, setCertificateEnabled] = useState(course ? !!course.certificateEnabled : true);
   const [sequential, setSequential] = useState(course ? !!course.sequential : false);
+  const [category, setCategory] = useState(course && course.category ? course.category : '');
+  const [archived, setArchived] = useState(course ? !!course.archived : false);
   const [deadline, setDeadline] = useState(course && course.deadline ? course.deadline : '');
   const [busy, setBusy] = useState(false);
   return (
@@ -1786,7 +1793,7 @@ function CourseModal({ course, onClose, onSave }) {
         <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100">キャンセル</button>
         <button
           disabled={busy || !title.trim()}
-          onClick={async () => { setBusy(true); try { await onSave({ title: title.trim(), description: description.trim(), emoji, color, published, certificateEnabled, sequential, deadline: deadline || null }); } finally { setBusy(false); } }}
+          onClick={async () => { setBusy(true); try { await onSave({ title: title.trim(), description: description.trim(), emoji, color, published, certificateEnabled, sequential, category: category.trim() || null, archived, deadline: deadline || null }); } finally { setBusy(false); } }}
           className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2">
           {busy && <Spinner size={14} />}{course ? '保存' : '作成'}
         </button>
@@ -1822,6 +1829,15 @@ function CourseModal({ course, onClose, onSave }) {
             ))}
           </div>
         </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-500 mb-1.5">カテゴリ（任意）</label>
+          <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="例：基礎研修、安全教育、接客" maxLength={20} list="hakomana-category-list"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
+          <datalist id="hakomana-category-list">
+            {existingCategories.map((c) => <option key={c} value={c} />)}
+          </datalist>
+          <p className="text-[11px] text-slate-400 mt-1.5">設定するとコース一覧でカテゴリ絞り込みができます。</p>
+        </div>
         <label className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 cursor-pointer select-none hover:bg-slate-50">
           <input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} className="w-4 h-4 mt-0.5 rounded accent-indigo-600" />
           <span>
@@ -1849,6 +1865,15 @@ function CourseModal({ course, onClose, onSave }) {
             className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
           <p className="text-[11px] text-slate-400 mt-1.5">設定すると受講生に「期限まであと◯日」が表示されます。空欄で期限なし。</p>
         </div>
+        {course && (
+          <label className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 cursor-pointer select-none hover:bg-slate-50">
+            <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} className="w-4 h-4 mt-0.5 rounded accent-indigo-600" />
+            <span>
+              <span className="flex items-center gap-1.5 text-sm font-bold text-slate-700"><Icon name="Trash2" size={14} className="text-slate-400" />アーカイブする</span>
+              <span className="block text-xs text-slate-400 mt-0.5">終了した研修に。受講生には表示されなくなりますが、データは削除されず、いつでも元に戻せます。</span>
+            </span>
+          </label>
+        )}
       </div>
     </Modal>
   );
@@ -1874,7 +1899,7 @@ function JoinByCodeModal({ onClose }) {
   const [busy, setBusy] = useState(false);
   const join = async () => {
     setError('');
-    const c = courses.find((x) => (x.inviteCode || '').toUpperCase() === code.trim().toUpperCase());
+    const c = courses.find((x) => !x.archived && (x.inviteCode || '').toUpperCase() === code.trim().toUpperCase());
     if (!c) { setError('この招待コードのコースが見つかりません'); return; }
     setBusy(true);
     try {
@@ -1911,13 +1936,58 @@ function CoursesPage() {
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
   const [query, setQuery] = useState('');
+  const [catFilter, setCatFilter] = useState('');
 
   const filtered = (list) => query.trim()
     ? list.filter((c) => (c.title + c.description).toLowerCase().includes(query.trim().toLowerCase()))
     : list;
+  const catMatch = (c) => !catFilter || c.category === catFilter;
+
+  const CategoryChips = ({ cats }) => cats.length === 0 ? null : (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {['', ...cats].map((cat) => (
+        <button key={cat || '_all'} onClick={() => setCatFilter(cat)}
+          className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${catFilter === cat ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
+          {cat || 'すべて'}
+        </button>
+      ))}
+    </div>
+  );
 
   if (isInstructor) {
-    const sorted = filtered([...courses].sort((a, b) => (tsToDate(b.createdAt)?.getTime() || 0) - (tsToDate(a.createdAt)?.getTime() || 0)));
+    const sorted = filtered([...courses].sort((a, b) => (tsToDate(b.createdAt)?.getTime() || 0) - (tsToDate(a.createdAt)?.getTime() || 0))).filter(catMatch);
+    const activeCourses = sorted.filter((c) => !c.archived);
+    const archivedCourses = sorted.filter((c) => c.archived);
+    const allCats = [...new Set(courses.map((c) => c.category).filter(Boolean))];
+    const renderCard = (course) => {
+      const ls = sortedLessonsOf(course, lessons);
+      const enrolledCount = enrollments.filter((e) => e.courseId === course.id && users.find((u) => u.id === e.uid && u.role === 'student')).length;
+      return (
+        <div key={course.id} onClick={() => nav('course', { courseId: course.id })}
+          className={`bg-white rounded-2xl border border-slate-100 shadow-sm p-4 cursor-pointer hover:border-indigo-200 hover:shadow transition-all ${course.archived ? 'opacity-70' : ''}`}>
+          <div className="flex items-start gap-3">
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl shrink-0" style={{ background: `${course.color}18` }}>{course.emoji}</div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-bold text-slate-800 text-sm">{course.title}</span>
+                {course.archived
+                  ? <Badge tone="amber">アーカイブ済み</Badge>
+                  : course.published
+                    ? <Badge tone="emerald"><Icon name="Globe" size={11} />公開中</Badge>
+                    : <Badge tone="slate"><Icon name="Lock" size={11} />非公開</Badge>}
+                {course.category && <Badge tone="indigo">{course.category}</Badge>}
+              </div>
+              {course.description && <p className="text-xs text-slate-400 mt-1 line-clamp-2">{course.description}</p>}
+              <div className="flex items-center gap-3 mt-2 text-[11px] text-slate-400">
+                <span className="flex items-center gap-1"><Icon name="Layers" size={12} />{(course.chapters || []).length}章・{ls.length}レッスン</span>
+                <span className="flex items-center gap-1"><Icon name="Users" size={12} />{enrolledCount}人受講中</span>
+              </div>
+            </div>
+            <Icon name="ChevronRight" size={17} className="text-slate-300 shrink-0 mt-1" />
+          </div>
+        </div>
+      );
+    };
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -1927,40 +1997,24 @@ function CoursesPage() {
           </button>
         </div>
         <SearchInput query={query} setQuery={setQuery} />
-        {sorted.length === 0 ? (
+        <CategoryChips cats={allCats} />
+        {activeCourses.length === 0 && archivedCourses.length === 0 ? (
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm">
-            <EmptyState icon="BookOpen" title={query ? '該当するコースがありません' : 'まだコースがありません'}
-              description={query ? '' : '「新規コース」から最初の研修コースを作成しましょう'} />
+            <EmptyState icon="BookOpen" title={query || catFilter ? '該当するコースがありません' : 'まだコースがありません'}
+              description={query || catFilter ? '' : '「新規コース」から最初の研修コースを作成しましょう'} />
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
-            {sorted.map((course) => {
-              const ls = sortedLessonsOf(course, lessons);
-              const enrolledCount = enrollments.filter((e) => e.courseId === course.id && users.find((u) => u.id === e.uid && u.role === 'student')).length;
-              return (
-                <div key={course.id} onClick={() => nav('course', { courseId: course.id })}
-                  className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 cursor-pointer hover:border-indigo-200 hover:shadow transition-all">
-                  <div className="flex items-start gap-3">
-                    <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl shrink-0" style={{ background: `${course.color}18` }}>{course.emoji}</div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-slate-800 text-sm">{course.title}</span>
-                        {course.published
-                          ? <Badge tone="emerald"><Icon name="Globe" size={11} />公開中</Badge>
-                          : <Badge tone="slate"><Icon name="Lock" size={11} />非公開</Badge>}
-                      </div>
-                      {course.description && <p className="text-xs text-slate-400 mt-1 line-clamp-2">{course.description}</p>}
-                      <div className="flex items-center gap-3 mt-2 text-[11px] text-slate-400">
-                        <span className="flex items-center gap-1"><Icon name="Layers" size={12} />{(course.chapters || []).length}章・{ls.length}レッスン</span>
-                        <span className="flex items-center gap-1"><Icon name="Users" size={12} />{enrolledCount}人受講中</span>
-                      </div>
-                    </div>
-                    <Icon name="ChevronRight" size={17} className="text-slate-300 shrink-0 mt-1" />
-                  </div>
-                </div>
-              );
-            })}
+            {activeCourses.map(renderCard)}
           </div>
+        )}
+        {archivedCourses.length > 0 && (
+          <section className="pt-2">
+            <h2 className="text-sm font-bold text-slate-400 mb-2.5">アーカイブ済み（{archivedCourses.length}）</h2>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {archivedCourses.map(renderCard)}
+            </div>
+          </section>
         )}
         {creating && (
           <CourseModal course={null} onClose={() => setCreating(false)} onSave={async (data) => {
@@ -1979,8 +2033,10 @@ function CoursesPage() {
   // ----- 受講生ビュー -----
   const myEnrollments = enrollments.filter((e) => e.uid === authUser.uid);
   const enrolledIds = new Set(myEnrollments.map((e) => e.courseId));
-  const myCourses = filtered(courses.filter((c) => enrolledIds.has(c.id)));
-  const available = filtered(courses.filter((c) => c.published && !enrolledIds.has(c.id)));
+  const visibleCourses = courses.filter((c) => !c.archived);
+  const myCourses = filtered(visibleCourses.filter((c) => enrolledIds.has(c.id))).filter(catMatch);
+  const available = filtered(visibleCourses.filter((c) => c.published && !enrolledIds.has(c.id))).filter(catMatch);
+  const studentCats = [...new Set(visibleCourses.filter((c) => c.published || enrolledIds.has(c.id)).map((c) => c.category).filter(Boolean))];
 
   return (
     <div className="space-y-5">
@@ -1991,6 +2047,7 @@ function CoursesPage() {
         </button>
       </div>
       <SearchInput query={query} setQuery={setQuery} />
+      <CategoryChips cats={studentCats} />
 
       <section>
         <h2 className="text-sm font-bold text-slate-500 mb-2.5">受講中（{myCourses.length}）</h2>
@@ -2088,6 +2145,16 @@ function CourseDetailPage({ courseId }) {
     );
   }
 
+  // アーカイブ済みコースは受講生に見せない
+  if (!isInstructor && course.archived) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-100">
+        <EmptyState icon="Lock" title="このコースはアーカイブされています" description="現在は受講できません"
+          action={<button onClick={() => nav('courses')} className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold">コース一覧へ</button>} />
+      </div>
+    );
+  }
+
   const chapters = sortedChaptersOf(course);
   const orderedLessons = sortedLessonsOf(course, lessons);
   // 受講生には下書きレッスンを表示しない（講師には全件表示）
@@ -2154,9 +2221,12 @@ function CourseDetailPage({ courseId }) {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-lg font-bold text-slate-900">{course.title}</h1>
-                {isInstructor && (course.published
-                  ? <Badge tone="emerald"><Icon name="Globe" size={11} />公開中</Badge>
-                  : <Badge tone="slate"><Icon name="Lock" size={11} />非公開</Badge>)}
+                {isInstructor && (course.archived
+                  ? <Badge tone="amber">アーカイブ済み</Badge>
+                  : course.published
+                    ? <Badge tone="emerald"><Icon name="Globe" size={11} />公開中</Badge>
+                    : <Badge tone="slate"><Icon name="Lock" size={11} />非公開</Badge>)}
+                {course.category && <Badge tone="indigo">{course.category}</Badge>}
                 {course.sequential && <Badge tone="sky"><Icon name="Lock" size={11} />順番に学習</Badge>}
                 <DeadlineBadge course={course} muted={isInstructor || (progress.percent >= 100 && progress.total > 0)} />
               </div>
@@ -4118,7 +4188,7 @@ function InstructorProgress({ initialCourseId }) {
   const [assigning, setAssigning] = useState(false);
   const [removingEn, setRemovingEn] = useState(null);
 
-  const sortedCourses = [...courses].sort((a, b) => (tsToDate(b.createdAt)?.getTime() || 0) - (tsToDate(a.createdAt)?.getTime() || 0));
+  const sortedCourses = courses.filter((c) => !c.archived).sort((a, b) => (tsToDate(b.createdAt)?.getTime() || 0) - (tsToDate(a.createdAt)?.getTime() || 0));
   const defaultCourse = useMemo(() => {
     if (!sortedCourses.length) return null;
     const countOf = (c) => enrollments.filter((e) => e.courseId === c.id).length;
@@ -4376,7 +4446,7 @@ function StudentProgress() {
   const myEnrollments = enrollments.filter((e) => e.uid === authUser.uid);
   const myCourses = myEnrollments
     .map((en) => ({ en, course: courses.find((c) => c.id === en.courseId) }))
-    .filter((x) => x.course);
+    .filter((x) => x.course && !x.course.archived);
 
   if (myCourses.length === 0) {
     return (
