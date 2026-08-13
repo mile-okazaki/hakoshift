@@ -1,0 +1,61 @@
+{
+  "_comment": "メルカリの手数料・送料。料金は改定されるため必ず公式ページで最新を確認し、last_verified を更新してください。",
+  "last_verified": "2026-08-13",
+  "source": "https://help.jp.mercari.com/guide/articles/webview/70/",
+
+  "commission_rate": 0.10,
+  "transfer_fee": 200,
+  "transfer_fee_note": "振込申請1回あたり。複数商品まとめて申請するなら amortize_over で按分する。",
+  "amortize_over": 10,
+
+  "default_packaging_cost": 30,
+
+  "shipping": {
+    "nekopos": {
+      "label": "らくらくメルカリ便 ネコポス",
+      "price": 210,
+      "size": "A4サイズ・厚さ3cm以内・1kg以内",
+      "extra_cost": 0
+    },
+    "yu_packet": {
+      "label": "ゆうゆうメルカリ便 ゆうパケット",
+      "price": 230,
+      "size": "3辺合計60cm以内・長辺34cm以内・厚さ3cm以内・1kg以内",
+      "extra_cost": 0
+    },
+    "yu_packet_post": {
+      "label": "ゆうゆうメルカリ便 ゆうパケットポスト",
+      "price": 215,
+      "size": "専用箱またはシール利用・ポスト投函",
+      "extra_cost": 65,
+      "extra_cost_note": "専用箱1枚あたり。シール利用なら20円。"
+    },
+    "yu_packet_plus": {
+      "label": "ゆうゆうメルカリ便 ゆうパケットプラス",
+      "price": 455,
+      "size": "24×17×7cm・2kg以内",
+      "extra_cost": 65,
+      "extra_cost_note": "専用箱1枚あたり"
+    },
+    "compact": {
+      "label": "らくらくメルカリ便 宅急便コンパクト",
+      "price": 450,
+      "size": "専用BOX 25×20×5cm",
+      "extra_cost": 70,
+      "extra_cost_note": "専用BOX1枚あたり"
+    },
+    "size60": { "label": "らくらくメルカリ便 宅急便 60サイズ", "price": 750, "size": "3辺合計60cm・2kg以内", "extra_cost": 0 },
+    "size80": { "label": "らくらくメルカリ便 宅急便 80サイズ", "price": 850, "size": "3辺合計80cm・5kg以内", "extra_cost": 0 },
+    "size100": { "label": "らくらくメルカリ便 宅急便 100サイズ", "price": 1050, "size": "3辺合計100cm・10kg以内", "extra_cost": 0 },
+    "size120": { "label": "らくらくメルカリ便 宅急便 120サイズ", "price": 1200, "size": "3辺合計120cm・15kg以内", "extra_cost": 0 },
+    "size140": { "label": "らくらくメルカリ便 宅急便 140サイズ", "price": 1450, "size": "3辺合計140cm・20kg以内", "extra_cost": 0 },
+    "size160": { "label": "らくらくメルカリ便 宅急便 160サイズ", "price": 1700, "size": "3辺合計160cm・25kg以内", "extra_cost": 0 },
+    "size180": { "label": "らくらくメルカリ便 宅急便 180サイズ", "price": 2100, "size": "3辺合計180cm・30kg以内", "extra_cost": 0 },
+    "size200": { "label": "らくらくメルカリ便 宅急便 200サイズ", "price": 2500, "size": "3辺合計200cm・30kg以内", "extra_cost": 0 },
+    "yu_pack60": { "label": "ゆうゆうメルカリ便 ゆうパック 60サイズ", "price": 770, "size": "3辺合計60cm・25kg以内", "extra_cost": 0 },
+    "yu_pack80": { "label": "ゆうゆうメルカリ便 ゆうパック 80サイズ", "price": 870, "size": "3辺合計80cm・25kg以内", "extra_cost": 0 },
+    "yu_pack100": { "label": "ゆうゆうメルカリ便 ゆうパック 100サイズ", "price": 1070, "size": "3辺合計100cm・25kg以内", "extra_cost": 0 },
+    "buyer_paid": { "label": "着払い（購入者負担）", "price": 0, "size": "送料は購入者が支払う", "extra_cost": 0 },
+    "none": { "label": "送料なし（手渡し等）", "price": 0, "size": "-", "extra_cost": 0 }
+  }
+}
