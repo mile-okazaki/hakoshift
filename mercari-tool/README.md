@@ -21,8 +21,8 @@
 | 価格設定・利益計算 | ✅ 全自動 |
 | 写真の加工・背景処理 | ✅ 全自動 |
 | サムネイル作成 | ✅ 全自動 |
-| タイトル・キャッチコピー | ✅ 全自動（Claude） |
-| 商品説明文 | ✅ 全自動（Claude） |
+| タイトル・キャッチコピー | ✅ 全自動（APIキー無しでも動作） |
+| 商品説明文 | ✅ 全自動（APIキー無しでも動作） |
 | コメント返信文の作成 | ✅ 全自動（送信は手動 or 半自動） |
 | 仕入れ先の評価・選定 | ✅ 全自動 |
 | 売上・純利益の集計 | ✅ 全自動 |
@@ -48,8 +48,9 @@ pip install -r requirements.txt
 # 2. 初期化（データディレクトリと .env を作成）
 python -m mercari_tool init
 
-# 3. .env を編集して ANTHROPIC_API_KEY を設定
-#    （文章生成を使わないなら省略可。価格計算・画像・売上管理は動きます）
+# 3. （任意）.env に ANTHROPIC_API_KEY を設定
+#    未設定でも全工程が動きます。設定するとタイトル・説明文の表現が
+#    ルールベースからClaude生成に切り替わります。
 ```
 
 以降 `python -m mercari_tool ...` で実行します。
@@ -59,8 +60,8 @@ python -m mercari_tool init
 
 | 用途 | 必要なもの |
 |---|---|
-| 価格計算・売上管理・画像加工 | Python 3.10+ のみ |
-| タイトル・説明文・コメント返信 | Claude API キー（[取得](https://console.anthropic.com/)） |
+| **全機能（出品の手前まで一通り）** | **Python 3.10+ のみ** |
+| 文章の質を上げたい場合のみ | Claude API キー（[取得](https://console.anthropic.com/)、任意） |
 | スプレッドシート連携 | Google サービスアカウントのJSONキー |
 | サムネイルの日本語表示 | 日本語フォント（多くの環境に既存。無ければ `MERCARI_FONT_PATH` で指定） |
 
@@ -82,8 +83,11 @@ python -m mercari_tool product add \
 # ② 相場データを置く（下の「相場データの用意」参照）
 #    data/comps/ナイキ-エアマックス-90-27cm.csv
 
-# ③ 出品ドラフトを一括生成
-python -m mercari_tool draft NK-AM90-27 --photos photo1.jpg photo2.jpg --whiten
+# ③ 写真をフォルダに入れる（ファイル名順が掲載順になる）
+#    photos/01_正面.jpg  02_背面.jpg  03_タグ.jpg ...
+
+# ④ 出品ドラフトを一括生成
+python -m mercari_tool draft NK-AM90-27 --photos-dir photos --whiten
 ```
 
 `data/output/NK-AM90-27/` に以下が出力されます。
@@ -192,7 +196,35 @@ python -m mercari_tool price offer NK-AM90-27 6000
 
 ---
 
-### 3. 画像の加工・修正
+### 3. 写真の受け渡しと加工
+
+写真はフォルダごと渡せます。**ファイル名の昇順がそのまま掲載順**になるので、
+撮影順に番号を付けておけばそのまま使えます。
+
+```
+photos/
+  01_正面.jpg      ← 1枚目。サムネイルはこの写真から作られる
+  02_背面.jpg
+  03_タグ・型番.jpg
+  04_ソール.jpg
+  05_傷の箇所.jpg
+```
+
+```bash
+python -m mercari_tool draft NK-AM90-27 --photos-dir photos --whiten
+# 個別指定もできます
+python -m mercari_tool draft NK-AM90-27 --photos a.jpg b.jpg
+```
+
+対応形式: jpg / jpeg / png / webp / heic / heif / bmp / tif
+
+枚数のチェックも入っています。
+
+- **10枚を超える** → 先頭10枚を使い、警告
+- **4枚未満** → 警告（正面・背面・タグ・傷の箇所は最低限あると問い合わせが減ります）
+- **0枚** → 警告（メルカリは画像1枚以上が必須）
+
+### 4. 画像の加工・修正
 
 ```bash
 python -m mercari_tool image process photo1.jpg photo2.jpg --whiten --out edited -v
@@ -226,7 +258,7 @@ ImagePipeline.open("photo.jpg").remove_background().save("out.png")
 
 ---
 
-### 4. サムネイル作成
+### 5. サムネイル作成
 
 ```bash
 python -m mercari_tool image thumb photo1.jpg \
@@ -242,10 +274,32 @@ python -m mercari_tool image thumb photo1.jpg \
 
 ---
 
-### 5. タイトル・キャッチコピー・説明文
+### 6. タイトル・キャッチコピー・説明文
 
-`draft` コマンドで自動生成されます（要 `ANTHROPIC_API_KEY`）。
+`draft` コマンドで自動生成されます。**APIキーの有無で経路が変わります。**
 
+| | APIキー無し（既定） | APIキーあり |
+|---|---|---|
+| タイトル | 商品情報と相場から**5案を組み立て** | Claudeが5案を生成 |
+| キャッチコピー | 登録内容から3案 | Claudeが3案 |
+| 説明文 | 定型構成で組み立て | Claudeが文章として執筆 |
+| 上限・整合チェック | ✅ 同じ | ✅ 同じ |
+
+APIキー無しの場合、タイトルは次のように組み立てられます。
+
+```
+ナイキ エアマックス 90 27cm 美品   ← ブランド→商品名→サイズ→状態
+ナイキ エアマックス 90 スニーカー ホワイト  ← 相場の頻出語を前寄りに
+美品 ナイキ エアマックス 90 27cm  ← 状態で絞り込む買い手向け
+エアマックス 90 27cm             ← 最短形
+```
+
+- 40文字を超える場合は、**重要度の低い語から自動で落として**収めます
+  （商品名だけは必ず残ります）。
+- 相場リサーチで見つけた頻出語は、**商品側の登録内容に裏付けがある語だけ**を使います。
+  「売れているタイトルに多いから」というだけで、この商品に当てはまらない語は入れません。
+- 「美品」「新品未使用」は、**申告した難点と矛盾する場合は付けません**
+  （新品なのに傷を申告している、難点が2つ以上あるのに美品、など）。
 - タイトルは**5案**生成し、40文字以内に収まっているものを先頭に並べます。
   超過している案には警告が付きます。
 - 説明文は【商品の詳細】【状態】【発送について】【ご購入前に】の構成で、
@@ -259,7 +313,7 @@ python -m mercari_tool image thumb photo1.jpg \
 
 ---
 
-### 6. コメント返信
+### 7. コメント返信
 
 ```bash
 python -m mercari_tool comment NK-AM90-27 --text "4500円になりませんか？"
@@ -297,7 +351,7 @@ python -m mercari_tool comment NK-AM90-27 --file comments.txt --json
 
 ---
 
-### 7. 仕入れ先の選定・調査
+### 8. 仕入れ先の選定・調査
 
 ```bash
 python -m mercari_tool supplier add --id sup_a --name "国内リサイクル卸A" \
@@ -341,7 +395,7 @@ python -m mercari_tool sourcing rank --sku NK-AM90-27
 
 ---
 
-### 8. 売上管理とスプレッドシート反映
+### 9. 売上管理とスプレッドシート反映
 
 ```bash
 # 仕入れを記録
@@ -434,6 +488,18 @@ python -m mercari_tool sales add --sku NK-AM90-27 --price 11180 --sync
 
 ---
 
+## マニュアル
+
+運用マニュアルは [`docs/`](docs/) に置きます。現在は枠のみ用意してあります。
+
+| ファイル | 内容 |
+|---|---|
+| [docs/photography.md](docs/photography.md) | 撮影マニュアル（ファイル名・枚数の規則はツールの動作に直結） |
+| [docs/listing.md](docs/listing.md) | 出品手順（listing.txt のどこを出品画面のどこに貼るか） |
+| [docs/operations.md](docs/operations.md) | ツール操作マニュアル（日々の運用） |
+
+---
+
 ## コマンド一覧
 
 ```
@@ -444,7 +510,7 @@ product add|list|show                 商品マスタ
 research <検索語> [--save] [--json]    相場リサーチ
 price suggest|offer|maxcost           価格提案 / 値下げ判定 / 仕入れ上限
 image process|thumb                   写真加工 / サムネイル
-draft <SKU> [--photos ...]            出品ドラフト一括生成
+draft <SKU> [--photos-dir DIR]        出品ドラフト一括生成
 comment <SKU> --text|--file           コメント返信文
 supplier add|list                     仕入れ先マスタ
 sourcing rank                         仕入れ先の評価・順位づけ
@@ -506,7 +572,7 @@ data/
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest tests/ -q        # 192件
+python -m pytest tests/ -q        # 220件
 python -m pyflakes mercari_tool/  # 静的チェック
 ```
 
@@ -525,7 +591,7 @@ mercari_tool/
   textutil.py     全角混じりの表を揃える
   research/       相場データ取得（providers）と集計（analyzer）
   pricing/        手数料テーブル（fees）と価格エンジン（engine）
-  content/        タイトル・説明文（generator）とコメント返信（comments）
+  content/        タイトル・説明文（generator / title_builder）とコメント返信（comments）
   images/         写真加工（pipeline）とサムネイル（thumbnail）
   sourcing/       仕入れ先の評価（evaluator）
   sales/          台帳（ledger）・集計（analytics）・シート連携（sheets）

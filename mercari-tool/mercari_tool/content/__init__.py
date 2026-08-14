@@ -6,6 +6,7 @@ from .generator import (
     DescriptionResult,
     build_fallback_description,
 )
+from .title_builder import build_titles, build_catchphrases
 from .comments import CommentResponder, CommentIntent, CommentReply, classify_intent
 
 __all__ = [
@@ -13,6 +14,8 @@ __all__ = [
     "TitleCandidate",
     "DescriptionResult",
     "build_fallback_description",
+    "build_titles",
+    "build_catchphrases",
     "CommentResponder",
     "CommentIntent",
     "CommentReply",

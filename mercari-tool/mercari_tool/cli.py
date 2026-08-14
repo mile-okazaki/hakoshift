@@ -352,14 +352,54 @@ def cmd_image_thumb(ctx: AppContext, args: argparse.Namespace) -> int:
 # ══════════════════════════════════════════════════════════
 # draft
 # ══════════════════════════════════════════════════════════
+#: 出品写真として読み込む拡張子
+PHOTO_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".bmp", ".tif", ".tiff"}
+
+
+def _collect_photos(paths: Sequence[str] | None, directory: str | None) -> list[str]:
+    """--photos と --photos-dir をまとめて、使う写真の並びを決める。
+
+    フォルダ指定はファイル名順。撮影順に 01_正面.jpg のように付けておけば
+    そのまま出品時の並びになる。
+    """
+    photos: list[str] = list(paths or [])
+    if directory:
+        base = Path(directory)
+        if not base.is_dir():
+            raise SystemExit(f"エラー: フォルダが見つかりません: {directory}")
+        found = sorted(
+            child
+            for child in base.iterdir()
+            if child.is_file() and child.suffix.lower() in PHOTO_SUFFIXES
+        )
+        if not found:
+            raise SystemExit(
+                f"エラー: {directory} に画像がありません。\n"
+                f"対応形式: {', '.join(sorted(PHOTO_SUFFIXES))}"
+            )
+        photos.extend(str(path) for path in found)
+
+    # 同じファイルを二重に渡されても1回だけ使う
+    unique: list[str] = []
+    seen: set[str] = set()
+    for photo in photos:
+        resolved = str(Path(photo).resolve())
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique.append(photo)
+    return unique
+
+
 def cmd_draft(ctx: AppContext, args: argparse.Namespace) -> int:
     from .export import DraftBuilder, write_draft_json, write_listing_text
 
     product = _require_product(ctx, args.sku)
+    photos = _collect_photos(args.photos, args.photos_dir)
     builder = DraftBuilder(ctx)
     result = builder.build(
         product,
-        photos=args.photos or [],
+        photos=photos,
         research_query=args.query,
         strategy=args.strategy or "",
         whiten_background=args.whiten,
@@ -813,6 +853,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("draft", help="出品ドラフトを一括生成する")
     p.add_argument("sku")
     p.add_argument("--photos", nargs="*", help="出品写真のパス")
+    p.add_argument(
+        "--photos-dir",
+        help="写真の入ったフォルダ。中の画像をファイル名順に全部使う",
+    )
     p.add_argument("--query", help="相場検索の語")
     p.add_argument("--strategy", choices=["quick", "balanced", "profit"])
     p.add_argument("--whiten", action="store_true", help="写真の背景を白飛ばしする")

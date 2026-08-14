@@ -17,10 +17,15 @@ from typing import Any, Sequence
 from ..context import AppContext
 from ..images import ImagePipeline, ThumbnailBuilder
 from ..images.thumbnail import suggest_badges
-from ..content import build_fallback_description
+from ..content import build_catchphrases, build_fallback_description, build_titles
 from ..llm import LLMError
 from ..models import ListingDraft, MarketStats, PriceRecommendation, Product
 from ..research import analyze
+
+#: メルカリに登録できる画像の上限
+MAX_PHOTOS = 10
+#: これを下回ると問い合わせが増えるので警告する枚数
+RECOMMENDED_PHOTOS = 4
 
 
 @dataclass
@@ -47,6 +52,20 @@ class DraftResult:
             "steps": list(self.steps),
             "output_dir": str(self.output_dir) if self.output_dir else None,
         }
+
+
+def _research_queries(product: Product) -> list[str]:
+    """相場を探すときの検索語の候補を、具体的な順に並べる。"""
+    parts = [product.brand.strip(), product.name.strip(), product.size_note.strip()]
+    full = " ".join(p for p in parts if p)
+    with_brand = " ".join(p for p in (product.brand.strip(), product.name.strip()) if p)
+
+    candidates = [full, with_brand, product.name.strip()]
+    unique: list[str] = []
+    for candidate in candidates:
+        if candidate and candidate not in unique:
+            unique.append(candidate)
+    return unique
 
 
 class DraftBuilder:
@@ -86,8 +105,10 @@ class DraftBuilder:
         target_dir.mkdir(parents=True, exist_ok=True)
 
         # ── 1. リサーチ ────────────────────────────────────
-        query = research_query or product.name
-        market = self._research(query, warnings, notes, steps)
+        queries = (
+            [research_query] if research_query else _research_queries(product)
+        )
+        market = self._research(queries, warnings, notes, steps)
 
         # ── 2. 価格 ────────────────────────────────────────
         recommendation = self.ctx.pricing.recommend(product, market)
@@ -110,7 +131,7 @@ class DraftBuilder:
         )
 
         # ── 4. 文章 ────────────────────────────────────────
-        title = product.name[:40]
+        title = ""
         catchphrase = ""
         description = ""
         hashtags: list[str] = []
@@ -122,6 +143,21 @@ class DraftBuilder:
             )
         else:
             steps.append("Claude での文章生成はスキップしました（--no-copy）")
+
+        if not title:
+            # Claude を使わずに、商品情報と相場からタイトルを組み立てる
+            built, catchphrases = build_titles(product, market)
+            if built:
+                title = built[0].text
+                alternatives = [c.text for c in built[1:]]
+                steps.append(f"タイトルを商品情報から組み立て: {len(built)}案")
+            else:
+                title = product.name[:40]
+            catchphrase = catchphrase or (catchphrases[0] if catchphrases else "")
+
+        if not catchphrase:
+            phrases = build_catchphrases(product)
+            catchphrase = phrases[0] if phrases else ""
 
         if not description:
             # 説明欄が空のまま出品作業に入らないよう、登録内容から組み立てる
@@ -163,22 +199,44 @@ class DraftBuilder:
 
     # ── 各工程 ─────────────────────────────────────────────
     def _research(
-        self, query: str, warnings: list[str], notes: list[str], steps: list[str]
+        self,
+        queries: Sequence[str],
+        warnings: list[str],
+        notes: list[str],
+        steps: list[str],
     ) -> MarketStats:
-        try:
-            comps = self.ctx.research_provider.fetch(query, limit=200)
+        """検索語の候補を順に試し、最初に見つかったデータを使う。
+
+        買い手は「ナイキ エアマックス 90 27cm」のように打つが、
+        商品名だけで保存していることもある。候補を広い順に試して
+        どちらの置き方でも拾えるようにする。
+        """
+        last_error: Exception | None = None
+        for query in queries:
+            if not query:
+                continue
+            try:
+                comps = self.ctx.research_provider.fetch(query, limit=200)
+            except (FileNotFoundError, RuntimeError, ValueError) as exc:
+                last_error = exc
+                continue
             market = analyze(comps, query=query)
             steps.append(
-                f"相場を取得: {market.sample_size}件 / 中央値 {market.median_price:,}円"
+                f"相場を取得: 「{query}」{market.sample_size}件 / "
+                f"中央値 {market.median_price:,}円"
             )
             # 「⚠」付きは対応が要る問題、それ以外は判断材料
             for message in market.warnings:
                 (warnings if message.startswith("⚠") else notes).append(message)
             return market
-        except (FileNotFoundError, RuntimeError, ValueError) as exc:
-            warnings.append(f"相場リサーチをスキップしました: {exc}")
-            steps.append("相場リサーチ: データなし")
-            return MarketStats(query=query)
+
+        tried = " / ".join(q for q in queries if q)
+        warnings.append(
+            f"相場データが見つかりませんでした（試した検索語: {tried}）。"
+            f"{last_error if last_error else ''}"
+        )
+        steps.append("相場リサーチ: データなし")
+        return MarketStats(query=queries[0] if queries else "")
 
     def _process_images(
         self,
@@ -191,8 +249,20 @@ class DraftBuilder:
         steps: list[str],
     ) -> tuple[list[Path], Path | None]:
         if not photos:
+            warnings.append(
+                "写真が指定されていません。メルカリは画像1枚以上が必須です。"
+                "--photos か --photos-dir で指定してください。"
+            )
             steps.append("画像処理: 写真の指定なし")
             return [], None
+
+        photos = list(photos)
+        if len(photos) > MAX_PHOTOS:
+            warnings.append(
+                f"写真が {len(photos)} 枚あります。メルカリは最大 {MAX_PHOTOS} 枚なので、"
+                f"先頭 {MAX_PHOTOS} 枚を使います。"
+            )
+            photos = photos[:MAX_PHOTOS]
 
         images_dir = target_dir / "images"
         images_dir.mkdir(parents=True, exist_ok=True)
@@ -210,6 +280,12 @@ class DraftBuilder:
         if not processed:
             return [], None
         steps.append(f"画像を加工: {len(processed)}枚")
+        if len(processed) < RECOMMENDED_PHOTOS:
+            warnings.append(
+                f"写真が {len(processed)} 枚です。"
+                f"正面・背面・タグ・傷の箇所など {RECOMMENDED_PHOTOS} 枚以上あると"
+                "問い合わせが減り、成約率が上がります。"
+            )
 
         thumbnail_path: Path | None = None
         try:
@@ -233,10 +309,9 @@ class DraftBuilder:
         steps: list[str],
     ) -> tuple[str, str, str, list[str], list[str]]:
         if not self.ctx.llm.is_available():
-            warnings.append(
-                "ANTHROPIC_API_KEY が未設定のため、タイトル・説明文の生成をスキップしました。"
-            )
-            return product.name[:40], "", "", [], []
+            # 空で返すことで、呼び出し元のルールベース組み立てに引き継ぐ
+            steps.append("Claude 未設定のため、商品情報からの組み立てに切り替え")
+            return "", "", "", [], []
 
         title = product.name[:40]
         catchphrase = ""
