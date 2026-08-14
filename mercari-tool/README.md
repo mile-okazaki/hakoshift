@@ -80,8 +80,8 @@ python -m mercari_tool product add \
   --points "定番のホワイト|箱付き" \
   --defects "アウトソールに薄い汚れ"
 
-# ② 相場データを置く（下の「相場データの用意」参照）
-#    data/comps/ナイキ-エアマックス-90-27cm.csv
+# ② 相場を書き写す（メルカリで同じ商品を検索して、売れている値段を並べる）
+python -m mercari_tool research add --sku NK-AM90-27 --prices 9800,11500,8900,10200
 
 # ③ 写真をフォルダに入れる（ファイル名順が掲載順になる）
 #    photos/01_正面.jpg  02_背面.jpg  03_タグ.jpg ...
@@ -132,10 +132,57 @@ python -m mercari_tool research "ナイキ エアマックス 90 27cm"
 - **状態別の中央値**を出します。「美品」と「傷あり」が混ざった中央値は使いものにならないためです。
 - **売れているタイトルの頻出語**を抽出し、タイトル生成に渡します。
 
-#### 相場データの用意
+#### 相場データの用意（いちばん手軽な方法）
 
-メルカリの検索結果を自動取得することは規約上できないため、**手元で集めたデータを
-CSVで置く**方式が既定です。`data/comps/` に、検索語をファイル名にして保存します。
+メルカリの検索結果を自動取得することは規約上できないため、**人が見た値段を
+書き写す**のが前提です。ただしCSVを手作りする必要はありません。
+`research add` に打ち込めば、集計まで一気に通ります。
+
+```bash
+# ① 値段を並べるだけ（いちばん速い）
+python -m mercari_tool research add --sku NK-AM90-27 --prices 9800,11500,8900,10200
+
+# ② 検索結果を見ながら1行ずつ貼り付ける（Ctrl-D で確定）
+python -m mercari_tool research add --sku NK-AM90-27
+ナイキ エアマックス90 27cm 白 9800円 売切
+エアマックス 90 27cm 美品 11500 SOLD
+出品中 16800円 27cm
+^D
+
+# ③ メモ帳に溜めたものをまとめて読ませる
+python -m mercari_tool research add "ナイキ エアマックス 90 27cm" --file prices.txt
+```
+
+```
+■ 相場データを更新: 「ナイキ エアマックス 90 27cm」
+  追加 3件 / 重複スキップ 1件 / 合計 10件
+  保存先: data/comps/ナイキ-エアマックス-90-27cm.json
+（続けて集計結果が表示されます）
+```
+
+行の読み方:
+
+| 書いたもの | 読まれ方 |
+|---|---|
+| `9800` / `9,800円` | 価格 |
+| `エアマックス 90 27cm 11500` | 「円」が無ければ**行内で最大の数値**が価格（型番90やサイズ27と取り違えない） |
+| `売切` `売り切れ` `SOLD` | 売却済み |
+| `出品中` `販売中` | 出品中（成約価格の統計に入れない） |
+| `美品` `新品未使用` `未使用に近い` | 状態 |
+| `2026-08-01` `8月1日` | 売却日 |
+| `# メモ` / 空行 | 無視 |
+
+- **同じ内容の行は二重に登録されません**。何度打っても相場が水増しされません。
+- `--sku` を付けると「ブランド + 商品名 + サイズ」を検索語として保存するので、
+  `draft` がそのまま拾います。検索語を自分で決めたい場合は文字列で渡します。
+- `--condition no_scratch` で全件に状態をまとめて付けられます。
+- `--active` を付けると全件を「出品中」として記録します。
+- 入れ直したいときは `--replace`。
+
+#### CSVで用意する場合
+
+Excelで作った表をそのまま置くこともできます。`data/comps/` に、検索語を
+ファイル名にして保存します。
 
 `data/comps/ナイキ-エアマックス-90-27cm.csv`:
 
@@ -488,6 +535,77 @@ python -m mercari_tool sales add --sku NK-AM90-27 --price 11180 --sync
 
 ---
 
+### 10. まとめて処理する（商品が多いとき）
+
+10点20点を1つずつ登録・生成するのは現実的でないので、一括の経路を用意しています。
+
+#### 仕入れ表から一括登録
+
+```bash
+# 列見本を書き出す
+python -m mercari_tool product import --template shiire.csv
+
+# 埋めたら、まず確認だけ（保存しない）
+python -m mercari_tool product import shiire.csv --dry-run
+
+# 問題なければ取り込む
+python -m mercari_tool product import shiire.csv
+```
+
+```csv
+sku,商品名,ブランド,カテゴリ,状態,サイズ,仕入値,在庫,配送方法,キーワード,訴求ポイント,難点
+NK-AM90-27,エアマックス 90,ナイキ,メンズ/靴/スニーカー,美品,27cm,4500,1,size80,スニーカー|ホワイト,定番のホワイト|箱付き,アウトソールに薄い汚れ
+UQ-FL-M,フリースジャケット,ユニクロ,メンズ/ジャケット,新品,M,1200,3,nekopos,フリース|防寒,タグ付き未使用,
+```
+
+- **日本語のヘッダーをそのまま使えます**（`商品名` `仕入値` `配送方法` …）。列の順番は自由、
+  不要な列は省けます。表の作業メモ列（担当者など）は無視されます。
+- 状態は `美品` `新品` のような普段の言い方で書けます。内部の値に読み替えます。
+- キーワード・訴求ポイント・難点は `|` 区切りで複数書けます。
+- **既に登録済みのSKUは「更新」**です。CSVに無い列（前に入れたキーワードなど）は
+  空欄扱いで消されません。在庫だけ書いたCSVで在庫の更新ができます。
+- 配送区分が不正な行、SKUが空の行は取り込まず、理由を表示します。
+
+#### 全商品ぶんのドラフトを一括生成
+
+写真をSKUごとのフォルダに入れておけば、`--all` で全部処理します。
+
+```
+photos/
+  NK-AM90-27/01_正面.jpg  02_背面.jpg  03_タグ.jpg  04_ソール.jpg
+  UQ-FL-M/   01_正面.jpg  02_背面.jpg  03_タグ.jpg  04_袖口.jpg
+```
+
+```bash
+python -m mercari_tool draft --all --photos-root photos --whiten
+
+# 在庫のあるものだけ
+python -m mercari_tool draft --all --in-stock --photos-root photos
+
+# 特定の何点かだけ
+python -m mercari_tool draft NK-AM90-27 UQ-FL-M --photos-root photos
+```
+
+```
+✔ NK-AM90-27: ナイキ エアマックス 90 27cm 美品（11,480円）
+⚠ UQ-FL-M: ユニクロ フリースジャケット M 新品未使用（2,380円）
+    相場データが見つかりませんでした（試した検索語: ユニクロ フリースジャケット M / …）
+    写真が 2 枚です。正面・背面・タグ・傷の箇所など 4 枚以上あると…
+
+生成 2件 / 失敗 0件 / 要確認 1件
+想定売上合計: 13,860円
+一覧CSV: data/output/drafts.csv
+各SKUの出品用テキスト: data/output/<SKU>/listing.txt
+```
+
+- SKUごとの出力（`listing.txt` / `draft.json` / 加工済み画像）は単品のときと同じです。
+- 加えて **`data/output/drafts.csv`** に一覧が出るので、出品作業の進捗管理に使えます。
+- **1点が失敗しても残りは続行**します。要確認の点数が最後にまとまるので、
+  そこだけ手当てして再実行してください。
+- 平置き（`photos/NK-AM90-27_01.jpg`）でも拾います。
+
+---
+
 ## マニュアル
 
 運用マニュアルは [`docs/`](docs/) に置きます。現在は枠のみ用意してあります。
@@ -507,10 +625,13 @@ init                                  データディレクトリと .env を用
 fees                                  手数料・送料テーブルを表示
 
 product add|list|show                 商品マスタ
+product import <CSV> [--dry-run]      仕入れ表から商品を一括登録
 research <検索語> [--save] [--json]    相場リサーチ
+research add <検索語> --prices ...     見た相場を書き写して貯める
 price suggest|offer|maxcost           価格提案 / 値下げ判定 / 仕入れ上限
 image process|thumb                   写真加工 / サムネイル
-draft <SKU> [--photos-dir DIR]        出品ドラフト一括生成
+draft <SKU>... [--photos-dir DIR]     出品ドラフト生成
+draft --all --photos-root photos      全商品ぶんをまとめて生成
 comment <SKU> --text|--file           コメント返信文
 supplier add|list                     仕入れ先マスタ
 sourcing rank                         仕入れ先の評価・順位づけ
@@ -589,7 +710,8 @@ mercari_tool/
   llm.py          Claude API ラッパー（構造化出力・拒否応答の処理）
   context.py      各機能の組み立て
   textutil.py     全角混じりの表を揃える
-  research/       相場データ取得（providers）と集計（analyzer）
+  importer.py     仕入れ表CSVからの一括取り込み
+  research/       相場データ取得（providers）・手入力（entry）・集計（analyzer）
   pricing/        手数料テーブル（fees）と価格エンジン（engine）
   content/        タイトル・説明文（generator / title_builder）とコメント返信（comments）
   images/         写真加工（pipeline）とサムネイル（thumbnail）

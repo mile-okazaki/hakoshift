@@ -54,7 +54,7 @@ class DraftResult:
         }
 
 
-def _research_queries(product: Product) -> list[str]:
+def research_queries(product: Product) -> list[str]:
     """相場を探すときの検索語の候補を、具体的な順に並べる。"""
     parts = [product.brand.strip(), product.name.strip(), product.size_note.strip()]
     full = " ".join(p for p in parts if p)
@@ -106,7 +106,7 @@ class DraftBuilder:
 
         # ── 1. リサーチ ────────────────────────────────────
         queries = (
-            [research_query] if research_query else _research_queries(product)
+            [research_query] if research_query else research_queries(product)
         )
         market = self._research(queries, warnings, notes, steps)
 

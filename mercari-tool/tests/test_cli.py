@@ -411,3 +411,278 @@ def test_draft_without_api_key_still_writes_a_description(workspace, capsys):
     assert "【商品の詳細】" in text
     assert "小傷あり" in text          # 申告した難点が載っている
     assert "#TestBrand" in text
+
+
+# ── research add ───────────────────────────────────────────
+def test_research_add_stores_pasted_prices(workspace, capsys):
+    run(workspace, "init")
+    capsys.readouterr()
+    assert run(workspace, "research", "add", "テスト品", "--prices", "4000,5000,6000") == 0
+    out = capsys.readouterr().out
+    assert "追加 3件" in out
+    assert "5,000" in out          # そのまま集計まで出る
+
+    # 保存した相場が research からそのまま読めること
+    assert run(workspace, "research", "テスト品") == 0
+    assert "中央値" in capsys.readouterr().out
+
+
+def test_research_add_reads_lines_from_a_file(workspace, capsys):
+    run(workspace, "init")
+    source = workspace / "prices.txt"
+    source.write_text(
+        "エアマックス 90 27cm 11500 売切\n美品 9800円\n出品中 16800\n",
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+    assert run(workspace, "research", "add", "テスト品", "--file", str(source)) == 0
+    out = capsys.readouterr().out
+    assert "追加 3件" in out
+    assert "売却済み 2" in out      # 出品中の1件は売却扱いにしない
+
+
+def test_research_add_reports_lines_it_could_not_read(workspace, capsys):
+    run(workspace, "init")
+    source = workspace / "prices.txt"
+    source.write_text("9800\n値段のない行\n", encoding="utf-8")
+    capsys.readouterr()
+    assert run(workspace, "research", "add", "テスト品", "--file", str(source)) == 0
+    out = capsys.readouterr().out
+    assert "追加 1件" in out
+    assert "読めなかった行" in out
+
+
+def test_research_add_accumulates_across_runs(workspace, capsys):
+    run(workspace, "init")
+    run(workspace, "research", "add", "テスト品", "--prices", "4000,5000", "--quiet")
+    capsys.readouterr()
+    run(workspace, "research", "add", "テスト品", "--prices", "5000,6000", "--quiet")
+    out = capsys.readouterr().out
+    assert "追加 1件" in out and "重複スキップ 1件" in out and "合計 3件" in out
+
+
+def test_research_add_replace_starts_over(workspace, capsys):
+    run(workspace, "init")
+    run(workspace, "research", "add", "テスト品", "--prices", "4000,5000", "--quiet")
+    capsys.readouterr()
+    run(workspace, "research", "add", "テスト品", "--prices", "9000", "--replace", "--quiet")
+    assert "合計 1件" in capsys.readouterr().out
+
+
+def test_research_add_uses_the_query_draft_will_look_up(workspace, capsys):
+    """--sku で貯めた相場が、そのまま draft から拾われること。"""
+    run(workspace, "init")
+    run(workspace, "product", "add", "--sku", "A1", "--name", "エアマックス 90",
+        "--brand", "ナイキ", "--size", "27cm", "--cost", "4000")
+    run(workspace, "research", "add", "--sku", "A1", "--prices", "9800,11500,10200", "--quiet")
+    capsys.readouterr()
+    run(workspace, "draft", "A1", "--no-copy")
+    assert "相場を取得" in capsys.readouterr().out
+
+
+def test_research_add_without_any_price_fails(workspace, capsys):
+    run(workspace, "init")
+    source = workspace / "prices.txt"
+    source.write_text("読めない行だけ\n", encoding="utf-8")
+    capsys.readouterr()
+    assert run(workspace, "research", "add", "テスト品", "--file", str(source)) == 1
+    assert "読み取れませんでした" in capsys.readouterr().err
+
+
+def test_research_add_needs_a_query(workspace, capsys):
+    run(workspace, "init")
+    capsys.readouterr()
+    assert run(workspace, "research", "add", "--prices", "1000") == 1
+
+
+# ── product import ─────────────────────────────────────────
+def _shiire_csv(workspace: Path) -> Path:
+    path = workspace / "shiire.csv"
+    path.write_text(
+        "sku,商品名,ブランド,状態,サイズ,仕入値,在庫,配送方法,キーワード,訴求ポイント\n"
+        "A1,エアマックス 90,ナイキ,美品,27cm,4500,1,size80,スニーカー|ホワイト,箱付き\n"
+        "B2,フリース,ユニクロ,新品,M,1200,3,nekopos,防寒,タグ付き\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_product_import_registers_every_row(workspace, capsys):
+    run(workspace, "init")
+    capsys.readouterr()
+    assert run(workspace, "product", "import", str(_shiire_csv(workspace))) == 0
+    assert "新規 2件" in capsys.readouterr().out
+
+    run(workspace, "product", "show", "A1")
+    data = json.loads(capsys.readouterr().out)
+    assert data["name"] == "エアマックス 90"
+    assert data["condition"] == "no_scratch"       # 「美品」を内部キーに直す
+    assert data["keywords"] == ["スニーカー", "ホワイト"]
+    assert data["cost_price"] == 4500
+
+
+def test_product_import_dry_run_saves_nothing(workspace, capsys):
+    run(workspace, "init")
+    capsys.readouterr()
+    run(workspace, "product", "import", str(_shiire_csv(workspace)), "--dry-run")
+    assert "確認のみ" in capsys.readouterr().out
+    assert run(workspace, "product", "show", "A1") == 1
+
+
+def test_product_import_updates_without_clearing_other_fields(workspace, capsys):
+    run(workspace, "init")
+    run(workspace, "product", "import", str(_shiire_csv(workspace)))
+    stock_only = workspace / "stock.csv"
+    stock_only.write_text("sku,在庫\nA1,5\n", encoding="utf-8")
+    capsys.readouterr()
+    run(workspace, "product", "import", str(stock_only))
+    assert "更新 1件" in capsys.readouterr().out
+
+    run(workspace, "product", "show", "A1")
+    data = json.loads(capsys.readouterr().out)
+    assert data["stock"] == 5
+    assert data["keywords"] == ["スニーカー", "ホワイト"]   # 消えていない
+
+
+def test_product_import_rejects_an_unknown_shipping_method(workspace, capsys):
+    run(workspace, "init")
+    path = workspace / "ng.csv"
+    path.write_text("sku,商品名,配送方法\nA1,テスト,宇宙便\n", encoding="utf-8")
+    capsys.readouterr()
+    run(workspace, "product", "import", str(path))
+    assert "配送方法" in capsys.readouterr().out
+    assert run(workspace, "product", "show", "A1") == 1
+
+
+def test_product_import_template_can_be_imported_back(workspace, capsys):
+    run(workspace, "init")
+    template = workspace / "template.csv"
+    capsys.readouterr()
+    assert run(workspace, "product", "import", "--template", str(template)) == 0
+    assert template.exists()
+    capsys.readouterr()
+    assert run(workspace, "product", "import", str(template)) == 0
+    assert "新規 1件" in capsys.readouterr().out
+
+
+def test_product_import_without_a_path_fails(workspace, capsys):
+    run(workspace, "init")
+    capsys.readouterr()
+    assert run(workspace, "product", "import") == 1
+
+
+# ── draft をまとめて ────────────────────────────────────────
+def _photo_tree(workspace: Path, skus: dict[str, int]) -> Path:
+    root = workspace / "photos"
+    for sku, count in skus.items():
+        folder = root / sku
+        folder.mkdir(parents=True, exist_ok=True)
+        for index in range(1, count + 1):
+            Image.new("RGB", (1200, 1500), (180, 190, 200)).save(
+                folder / f"{index:02d}_shot.jpg"
+            )
+    return root
+
+
+def test_draft_all_generates_every_product(workspace, capsys):
+    run(workspace, "init")
+    run(workspace, "product", "import", str(_shiire_csv(workspace)))
+    root = _photo_tree(workspace, {"A1": 4, "B2": 4})
+    capsys.readouterr()
+
+    assert run(workspace, "draft", "--all", "--photos-root", str(root), "--no-copy") == 0
+    out = capsys.readouterr().out
+    assert "生成 2件" in out
+    for sku in ("A1", "B2"):
+        target = workspace / "data" / "output" / sku
+        assert (target / "listing.txt").exists()
+        assert (target / "images" / f"{sku}_thumbnail.jpg").exists()
+    assert (workspace / "data" / "output" / "drafts.csv").exists()
+
+
+def test_draft_all_writes_one_csv_row_per_sku(workspace, capsys):
+    run(workspace, "init")
+    run(workspace, "product", "import", str(_shiire_csv(workspace)))
+    capsys.readouterr()
+    run(workspace, "draft", "--all", "--no-copy")
+    rows = (workspace / "data" / "output" / "drafts.csv").read_text(
+        encoding="utf-8-sig"
+    ).splitlines()
+    assert rows[0].startswith("sku,")
+    assert any(line.startswith("A1,") for line in rows)
+    assert any(line.startswith("B2,") for line in rows)
+
+
+def test_draft_accepts_several_skus(workspace, capsys):
+    run(workspace, "init")
+    run(workspace, "product", "import", str(_shiire_csv(workspace)))
+    capsys.readouterr()
+    assert run(workspace, "draft", "A1", "B2", "--no-copy") == 0
+    assert "生成 2件" in capsys.readouterr().out
+
+
+def test_draft_in_stock_skips_sold_out_products(workspace, capsys):
+    run(workspace, "init")
+    run(workspace, "product", "add", "--sku", "A1", "--name", "在庫あり", "--stock", "2")
+    run(workspace, "product", "add", "--sku", "B2", "--name", "在庫なし", "--stock", "0")
+    capsys.readouterr()
+    run(workspace, "draft", "--all", "--in-stock", "--no-copy")
+    out = capsys.readouterr().out
+    assert "A1" in out and "B2" not in out
+
+
+def test_draft_photos_root_points_at_the_missing_folder(workspace, capsys):
+    """写真が置かれていないとき、どこに置けばよいかを示す。"""
+    run(workspace, "init")
+    run(workspace, "product", "add", "--sku", "A1", "--name", "写真なし")
+    run(workspace, "product", "add", "--sku", "B2", "--name", "写真なし2")
+    root = _photo_tree(workspace, {"A1": 1})
+    capsys.readouterr()
+    run(workspace, "draft", "--all", "--photos-root", str(root), "--no-copy")
+    out = capsys.readouterr().out
+    assert str(root / "B2") in out
+
+
+def test_draft_photos_root_accepts_flat_files(workspace, capsys):
+    """photos/A1_01.jpg のような平置きでも拾う。"""
+    run(workspace, "init")
+    run(workspace, "product", "add", "--sku", "A1", "--name", "テスト品")
+    root = workspace / "flat"
+    root.mkdir()
+    for index in (1, 2):
+        Image.new("RGB", (1200, 1500), (200, 200, 200)).save(root / f"A1_{index:02d}.jpg")
+    capsys.readouterr()
+    run(workspace, "draft", "A1", "--photos-root", str(root), "--no-copy")
+    draft = json.loads(
+        (workspace / "data" / "output" / "A1" / "draft.json").read_text(encoding="utf-8")
+    )
+    assert len(draft["draft"]["image_paths"]) == 2
+
+
+def test_draft_needs_a_target(workspace, capsys):
+    run(workspace, "init")
+    capsys.readouterr()
+    assert run(workspace, "draft", "--no-copy") == 1
+    assert "--all" in capsys.readouterr().err
+
+
+def test_draft_all_and_sku_together_is_rejected(workspace, capsys):
+    run(workspace, "init")
+    run(workspace, "product", "add", "--sku", "A1", "--name", "x")
+    capsys.readouterr()
+    assert run(workspace, "draft", "A1", "--all", "--no-copy") == 1
+
+
+def test_draft_out_is_refused_for_multiple_skus(workspace, capsys):
+    """複数点を1つのフォルダに書くと上書きし合うので断る。"""
+    run(workspace, "init")
+    run(workspace, "product", "import", str(_shiire_csv(workspace)))
+    capsys.readouterr()
+    assert run(workspace, "draft", "A1", "B2", "--out", str(workspace / "o"), "--no-copy") == 1
+
+
+def test_draft_all_with_no_products_is_not_an_error(workspace, capsys):
+    run(workspace, "init")
+    capsys.readouterr()
+    assert run(workspace, "draft", "--all", "--no-copy") == 0
+    assert "対象の商品がありません" in capsys.readouterr().out

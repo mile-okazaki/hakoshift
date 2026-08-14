@@ -27,7 +27,15 @@ from . import __version__
 from .config import Config
 from .context import AppContext
 from .models import CONDITIONS, Product, Supplier
-from .research import analyze, save_comps
+from .research import (
+    ParsedLine,
+    analyze,
+    append_comps,
+    load_existing,
+    parse_lines,
+    parse_prices,
+    save_comps,
+)
 from .research.analyzer import format_stats
 from .sales.analytics import (
     daily_summary,
@@ -176,6 +184,53 @@ def cmd_product_show(ctx: AppContext, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_product_import(ctx: AppContext, args: argparse.Namespace) -> int:
+    """仕入れ表の CSV から商品をまとめて登録する。"""
+    from .importer import TEMPLATE_CSV, read_products_csv
+
+    if args.template:
+        target = Path(args.template)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(TEMPLATE_CSV, encoding="utf-8")
+        _print(f"見本を書き出しました: {target}")
+        _print("この列を埋めてから mercari-tool product import <ファイル> を実行してください。")
+        return 0
+
+    if not args.csv:
+        return _fail("CSV のパスを指定してください（見本が要るときは --template out.csv）。")
+
+    existing = {p.sku: p for p in ctx.ledger.products.all()}
+    try:
+        products, errors = read_products_csv(args.csv, existing)
+    except (FileNotFoundError, UnicodeDecodeError) as exc:
+        return _fail(str(exc))
+
+    created: list[str] = []
+    updated: list[str] = []
+    for product in products:
+        # 送料区分が実在するか、登録前に確かめる
+        try:
+            ctx.fees.shipping(product.shipping_method)
+        except (KeyError, ValueError) as exc:
+            errors.append(f"{product.sku}: 配送方法が不正です（{exc}）")
+            continue
+        (updated if product.sku in existing else created).append(product.sku)
+        if not args.dry_run:
+            ctx.ledger.products.upsert(product)
+
+    prefix = "[確認のみ] " if args.dry_run else ""
+    _print(f"{prefix}新規 {len(created)}件 / 更新 {len(updated)}件")
+    for sku in created:
+        _print(f"  + {sku}")
+    for sku in updated:
+        _print(f"  ~ {sku}")
+    for message in errors:
+        _print(f"  ⚠ {message}")
+    if args.dry_run:
+        _print("\n--dry-run のため保存していません。問題なければ外して再実行してください。")
+    return 1 if errors and not (created or updated) else 0
+
+
 # ══════════════════════════════════════════════════════════
 # research
 # ══════════════════════════════════════════════════════════
@@ -199,6 +254,72 @@ def cmd_research(ctx: AppContext, args: argparse.Namespace) -> int:
         _print(f"\n保存しました: {path}")
     if args.json:
         _print(json.dumps(stats.to_dict(), ensure_ascii=False, indent=2))
+    return 0
+
+
+def _read_comp_source(args: argparse.Namespace) -> list[str]:
+    """--file / 標準入力 / 引数から、相場の行を読む。"""
+    if args.file:
+        return Path(args.file).read_text(encoding="utf-8").splitlines()
+    if args.line:
+        return list(args.line)
+    if sys.stdin.isatty():
+        _print("価格を1行ずつ貼り付けてください。終わりは Ctrl-D（Windows は Ctrl-Z）。")
+    return sys.stdin.read().splitlines()
+
+
+def cmd_research_add(ctx: AppContext, args: argparse.Namespace) -> int:
+    """メルカリの検索結果を見ながら打った価格を、相場データとして貯める。"""
+    # Pillow を読み込まずに済むよう、必要になってから取り込む
+    from .export import research_queries
+
+    query = args.query
+    if args.sku:
+        product = _require_product(ctx, args.sku)
+        query = query or research_queries(product)[0]
+    if not query:
+        return _fail("検索語か --sku のどちらかを指定してください。")
+
+    condition = args.condition or ""
+    if condition and condition not in CONDITIONS:
+        return _fail(f"状態は {'/'.join(CONDITIONS)} のいずれかで指定してください。")
+
+    failed: list[ParsedLine] = []
+    if args.prices:
+        comps = parse_prices(
+            args.prices,
+            default_condition=condition,
+            default_sold=not args.active,
+            title=args.title or "",
+        )
+    else:
+        try:
+            lines = _read_comp_source(args)
+        except OSError as exc:
+            return _fail(str(exc))
+        comps, failed = parse_lines(
+            lines, default_condition=condition, default_sold=not args.active
+        )
+
+    if not comps:
+        return _fail(
+            "価格を1件も読み取れませんでした。\n"
+            "  例: --prices 9800,11500,8900\n"
+            "      または 1行1件で「エアマックス 90 27cm 11500 売切」のように入力"
+        )
+
+    result = append_comps(ctx.config.comps_dir, query, comps, replace=args.replace)
+
+    _print(f"■ 相場データを更新: 「{query}」")
+    _print(f"  追加 {result.added}件 / 重複スキップ {result.skipped}件 / 合計 {result.total}件")
+    _print(f"  保存先: {result.path}")
+    for parsed in failed:
+        _print(f"  ⚠ 読めなかった行: {parsed.raw}（{parsed.error}）")
+
+    if not args.quiet:
+        stats = analyze(load_existing(ctx.config.comps_dir, query), query=query)
+        _print("")
+        _print(format_stats(stats))
     return 0
 
 
@@ -391,27 +512,30 @@ def _collect_photos(paths: Sequence[str] | None, directory: str | None) -> list[
     return unique
 
 
-def cmd_draft(ctx: AppContext, args: argparse.Namespace) -> int:
-    from .export import DraftBuilder, write_draft_json, write_listing_text
+def photos_for_sku(root: str | Path, sku: str) -> list[str]:
+    """`--photos-root` の下から、その SKU の写真を集める。
 
-    product = _require_product(ctx, args.sku)
-    photos = _collect_photos(args.photos, args.photos_dir)
-    builder = DraftBuilder(ctx)
-    result = builder.build(
-        product,
-        photos=photos,
-        research_query=args.query,
-        strategy=args.strategy or "",
-        whiten_background=args.whiten,
-        generate_copy=not args.no_copy,
-        output_dir=args.out,
-    )
+    ``photos/NK-AM90-27/01_正面.jpg`` のようにフォルダを切る運用を基本にし、
+    ``photos/NK-AM90-27_01.jpg`` のような平置きにも対応する。
+    どちらもファイル名順に並べる。撮影順＝掲載順になるよう番号を振っておく。
+    """
+    base = Path(root)
+    folder = base / sku
+    if folder.is_dir():
+        return [
+            str(path)
+            for path in sorted(folder.iterdir())
+            if path.is_file() and path.suffix.lower() in PHOTO_SUFFIXES
+        ]
+    return [
+        str(path)
+        for path in sorted(base.glob(f"{sku}*"))
+        if path.is_file() and path.suffix.lower() in PHOTO_SUFFIXES
+    ]
 
-    target = result.output_dir or ctx.config.output_dir / product.sku
-    shipping_label = ctx.fees.shipping(product.shipping_method).label
-    text_path = write_listing_text(result.draft, target / "listing.txt", shipping_label)
-    json_path = write_draft_json(result, target / "draft.json")
 
+def _print_draft(result, product: Product, text_path: Path, json_path: Path) -> None:
+    """1点ぶんのドラフトを、そのまま貼れる形で表示する。"""
     _print(f"■ 出品ドラフト: {product.sku} / {product.name}\n")
     for step in result.steps:
         _print(f"  ✔ {step}")
@@ -439,7 +563,92 @@ def cmd_draft(ctx: AppContext, args: argparse.Namespace) -> int:
     _print(f"ドラフトJSON  : {json_path}")
     if result.draft.thumbnail_path:
         _print(f"サムネイル    : {result.draft.thumbnail_path}")
-    return 0
+
+
+def _draft_targets(ctx: AppContext, args: argparse.Namespace) -> list[Product]:
+    """どの商品のドラフトを作るかを決める。"""
+    if args.all:
+        products = ctx.ledger.products.all()
+        if args.in_stock:
+            products = [p for p in products if p.stock > 0]
+        return products
+    return [_require_product(ctx, sku) for sku in args.sku]
+
+
+def cmd_draft(ctx: AppContext, args: argparse.Namespace) -> int:
+    from .export import DraftBuilder, export_drafts_csv, write_draft_json, write_listing_text
+
+    if not args.all and not args.sku:
+        return _fail("SKU を指定するか、--all で全商品を対象にしてください。")
+    if args.all and args.sku:
+        return _fail("--all と SKU の同時指定はできません。")
+
+    products = _draft_targets(ctx, args)
+    if not products:
+        _print("対象の商品がありません。")
+        return 0
+    if len(products) > 1 and args.out:
+        return _fail("--out は1点ずつのときだけ使えます。複数点は SKU ごとのフォルダに書き出します。")
+
+    builder = DraftBuilder(ctx)
+    drafts = []
+    summary: list[tuple[Product, int, int]] = []  # (商品, 価格, 警告数)
+    failures: list[str] = []
+
+    for product in products:
+        if args.photos_root:
+            photos = photos_for_sku(args.photos_root, product.sku)
+        else:
+            photos = _collect_photos(args.photos, args.photos_dir)
+
+        try:
+            result = builder.build(
+                product,
+                photos=photos,
+                research_query=args.query,
+                strategy=args.strategy or "",
+                whiten_background=args.whiten,
+                generate_copy=not args.no_copy,
+                output_dir=args.out,
+            )
+        except (OSError, ValueError) as exc:
+            # 1点の失敗で残り全部を止めない
+            failures.append(f"{product.sku}: {exc}")
+            continue
+
+        target = result.output_dir or ctx.config.output_dir / product.sku
+        shipping_label = ctx.fees.shipping(product.shipping_method).label
+        text_path = write_listing_text(result.draft, target / "listing.txt", shipping_label)
+        json_path = write_draft_json(result, target / "draft.json")
+        drafts.append(result.draft)
+        summary.append((product, result.draft.price, len(result.warnings)))
+
+        if len(products) == 1:
+            _print_draft(result, product, text_path, json_path)
+        else:
+            mark = "⚠" if result.warnings else "✔"
+            _print(f"{mark} {product.sku}: {result.draft.title}（{result.draft.price:,}円）")
+            for warning in result.warnings:
+                # 一覧が流れてしまうので、1点ずつは1行にまとめる
+                _print(f"    {warning.lstrip('⚠ ').splitlines()[0]}")
+            if args.photos_root and not photos:
+                _print(f"    → 写真は {Path(args.photos_root) / product.sku}/ に置いてください")
+
+    for message in failures:
+        _print(f"✖ {message}")
+
+    if len(products) > 1:
+        csv_path = Path(args.csv) if args.csv else ctx.config.output_dir / "drafts.csv"
+        export_drafts_csv(drafts, csv_path)
+        total = sum(price for _, price, _ in summary)
+        flagged = sum(1 for _, _, count in summary if count)
+        _print("")
+        _print(f"生成 {len(drafts)}件 / 失敗 {len(failures)}件 / 要確認 {flagged}件")
+        _print(f"想定売上合計: {total:,}円")
+        _print(f"一覧CSV: {csv_path}")
+        _print(f"各SKUの出品用テキスト: {ctx.config.output_dir}/<SKU>/listing.txt")
+
+    return 1 if failures and not drafts else 0
 
 
 # ══════════════════════════════════════════════════════════
@@ -790,14 +999,66 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("sku")
     p.set_defaults(func=cmd_product_show)
 
+    p = product.add_parser(
+        "import",
+        help="CSV から商品をまとめて登録する",
+        description=(
+            "仕入れ表の CSV を読んで商品マスタに流し込む。\n"
+            "日本語のヘッダー（商品名/ブランド/仕入値/…）をそのまま使える。\n"
+            "キーワード・訴求ポイント・難点は「|」区切りで複数書ける。\n"
+            "  見本を出す: product import --template shiire.csv"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("csv", nargs="?", help="読み込む CSV のパス")
+    p.add_argument("--template", help="この場所に列見本の CSV を書き出す")
+    p.add_argument(
+        "--dry-run", action="store_true", help="保存せずに結果だけ確認する"
+    )
+    p.set_defaults(func=cmd_product_import)
+
     # ── research ───────────────────────────────────────
-    p = sub.add_parser("research", help="相場をリサーチする")
+    research = sub.add_parser(
+        "research",
+        help="相場をリサーチする",
+        description="相場を集計する。サブコマンドを省くと stats として扱う。",
+    ).add_subparsers(dest="action", metavar="コマンド")
+
+    p = research.add_parser("stats", help="保存済みの相場データを集計する")
     p.add_argument("query", nargs="?", help="検索語")
     p.add_argument("--sku", help="商品名を検索語として使う")
     p.add_argument("--limit", type=int, default=200)
     p.add_argument("--save", action="store_true", help="取得結果を保存する")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_research)
+
+    p = research.add_parser(
+        "add",
+        help="見た相場を書き写して貯める",
+        description=(
+            "メルカリの検索結果を見ながら価格を入力し、相場データに足す。\n"
+            "  例1: research add \"ナイキ エアマックス 90 27cm\" --prices 9800,11500,8900\n"
+            "  例2: research add --sku NK-AM90-27      （貼り付け。Ctrl-D で終了）\n"
+            "  例3: research add \"...\" --file prices.txt\n"
+            "1行1件。「エアマックス 90 27cm 11500 売切」のような雑な行を読む。"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("query", nargs="?", help="検索語（保存先のキーになる）")
+    p.add_argument("--sku", help="この商品の検索語として保存する")
+    p.add_argument("--prices", help="価格をカンマ区切りで（例: 9800,11500,8900）")
+    p.add_argument("--line", action="append", help="1件ぶんの行。繰り返し指定できる")
+    p.add_argument("--file", help="1行1件のテキストファイル")
+    p.add_argument("--title", help="--prices のときに全件へ付けるタイトル")
+    p.add_argument("--condition", choices=list(CONDITIONS), help="全件に付ける状態")
+    p.add_argument(
+        "--active",
+        action="store_true",
+        help="売却済みではなく出品中の価格として記録する",
+    )
+    p.add_argument("--replace", action="store_true", help="既存データを置き換える")
+    p.add_argument("--quiet", action="store_true", help="集計結果を表示しない")
+    p.set_defaults(func=cmd_research_add)
 
     # ── price ──────────────────────────────────────────
     price = sub.add_parser("price", help="価格設定").add_subparsers(
@@ -851,12 +1112,21 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ── draft ──────────────────────────────────────────
     p = sub.add_parser("draft", help="出品ドラフトを一括生成する")
-    p.add_argument("sku")
+    p.add_argument("sku", nargs="*", help="対象の SKU。複数指定できる")
+    p.add_argument("--all", action="store_true", help="登録済みの全商品を対象にする")
+    p.add_argument(
+        "--in-stock", action="store_true", help="--all のとき在庫のあるものだけにする"
+    )
     p.add_argument("--photos", nargs="*", help="出品写真のパス")
     p.add_argument(
         "--photos-dir",
         help="写真の入ったフォルダ。中の画像をファイル名順に全部使う",
     )
+    p.add_argument(
+        "--photos-root",
+        help="SKU ごとの写真置き場。photos/<SKU>/*.jpg を自動で拾う",
+    )
+    p.add_argument("--csv", help="複数点のときの一覧CSVの書き出し先")
     p.add_argument("--query", help="相場検索の語")
     p.add_argument("--strategy", choices=["quick", "balanced", "profit"])
     p.add_argument("--whiten", action="store_true", help="写真の背景を白飛ばしする")
@@ -963,9 +1233,42 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+#: `research` のサブコマンド。これ以外が続いたら検索語とみなす。
+_RESEARCH_ACTIONS = {"stats", "add"}
+
+
+def _expand_research_shorthand(argv: Sequence[str] | None) -> list[str] | None:
+    """`research "ナイキ"` を `research stats "ナイキ"` に読み替える。
+
+    add を足すためにサブコマンド化したが、これまでの書き方も通したい。
+    """
+    if argv is None:
+        argv = sys.argv[1:]
+    tokens = list(argv)
+    # グループ名は最初の非オプション引数。--env などの値と取り違えない。
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token in ("--env", "--data-dir"):
+            index += 2
+            continue
+        if token.startswith("-"):
+            index += 1
+            continue
+        break
+    if index >= len(tokens) or tokens[index] != "research":
+        return tokens
+    following = tokens[index + 1 :]
+    if following and following[0] in _RESEARCH_ACTIONS:
+        return tokens
+    if following and following[0] in ("-h", "--help"):
+        return tokens
+    return tokens[: index + 1] + ["stats"] + following
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(_expand_research_shorthand(argv))
 
     if not getattr(args, "func", None):
         # グループだけ指定された場合は、そのグループのヘルプを出す

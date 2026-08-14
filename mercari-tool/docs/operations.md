@@ -18,8 +18,18 @@
 ## よく使うコマンド
 
 ```bash
+# 仕入れ表からまとめて登録（--dry-run で確認してから）
+python -m mercari_tool product import shiire.csv --dry-run
+python -m mercari_tool product import shiire.csv
+
+# 相場を書き写す（メルカリで検索して、売れている値段を並べる）
+python -m mercari_tool research add --sku <SKU> --prices 9800,11500,8900
+
 # 出品準備
 python -m mercari_tool draft <SKU> --photos-dir photos --whiten
+
+# 溜まったぶんをまとめて（photos/<SKU>/ に写真を置いておく）
+python -m mercari_tool draft --all --in-stock --photos-root photos --whiten
 
 # 値下げ交渉が来たとき
 python -m mercari_tool price offer <SKU> <提示額>

@@ -12,8 +12,24 @@ from .providers import (
     slugify,
 )
 from .analyzer import analyze, tokenize_ja
+from .entry import (
+    AppendResult,
+    ParsedLine,
+    append_comps,
+    load_existing,
+    parse_line,
+    parse_lines,
+    parse_prices,
+)
 
 __all__ = [
+    "AppendResult",
+    "ParsedLine",
+    "append_comps",
+    "load_existing",
+    "parse_line",
+    "parse_lines",
+    "parse_prices",
     "MarketDataProvider",
     "CsvFileProvider",
     "JsonFileProvider",
