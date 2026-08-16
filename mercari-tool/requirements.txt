@@ -1,0 +1,8 @@
+Pillow>=10.0
+pillow-heif>=0.15   # iPhoneのHEIC写真を読むため
+anthropic>=0.60
+python-dotenv>=1.0
+
+# Googleスプレッドシート連携を使う場合のみ必要
+gspread>=6.0
+google-auth>=2.30

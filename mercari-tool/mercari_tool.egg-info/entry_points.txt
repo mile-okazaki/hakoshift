@@ -1,0 +1,2 @@
+[console_scripts]
+mercari-tool = mercari_tool.cli:main

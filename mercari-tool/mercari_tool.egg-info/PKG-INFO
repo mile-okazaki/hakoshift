@@ -1,0 +1,14 @@
+Metadata-Version: 2.4
+Name: mercari-tool
+Version: 0.1.0
+Summary: メルカリ出品支援エンジン（リサーチ・価格設定・画像加工・文章生成・仕入れ分析・売上管理）
+Requires-Python: >=3.10
+Requires-Dist: Pillow>=10.0
+Requires-Dist: pillow-heif>=0.15
+Requires-Dist: anthropic>=0.60
+Requires-Dist: python-dotenv>=1.0
+Provides-Extra: sheets
+Requires-Dist: gspread>=6.0; extra == "sheets"
+Requires-Dist: google-auth>=2.30; extra == "sheets"
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
