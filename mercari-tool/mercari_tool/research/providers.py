@@ -173,7 +173,10 @@ class DirectoryProvider(MarketDataProvider):
 
     def path_for(self, query: str) -> Path | None:
         slug = slugify(query)
-        for ext in (".csv", ".json"):
+        # 両方あるときは JSON を読む。`research add` は追記時に同名 CSV の
+        # 内容も JSON へ取り込むため、JSON の方が常に上位互換になる。
+        # CSV を先に読むと、add で書き写したぶんが永遠に反映されない。
+        for ext in (".json", ".csv"):
             candidate = self.directory / f"{slug}{ext}"
             if candidate.exists():
                 return candidate

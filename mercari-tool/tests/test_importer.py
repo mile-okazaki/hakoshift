@@ -164,3 +164,27 @@ def test_the_shipped_template_imports_cleanly(tmp_path):
     assert len(products) == 1
     assert products[0].condition == "no_scratch"
     assert products[0].selling_points == ["定番のホワイト", "箱付き"]
+
+
+def test_uppercase_sku_header_is_accepted(tmp_path):
+    """Excel でありがちな「SKU」（大文字）ヘッダーでも読める。"""
+    products, errors = read_products_csv(
+        _write(tmp_path, "SKU,商品名\nA1,テスト\n")
+    )
+    assert errors == []
+    assert products[0].sku == "A1"
+
+
+def test_existing_products_are_not_mutated_in_place():
+    """取り込みが既存オブジェクトを直接書き換えない。
+
+    検証で行を弾いたのに台帳キャッシュ側だけ書き換わっていて、
+    別の行の保存時に混入する事故（レビューで再現）を防ぐ。
+    """
+    original = Product(sku="A1", name="旧名", cost_price=1000)
+    products, _ = rows_to_products(
+        [{"sku": "A1", "商品名": "新名", "仕入値": "9999"}], {"A1": original}
+    )
+    assert original.name == "旧名"          # 元は無傷
+    assert original.cost_price == 1000
+    assert products[0].name == "新名"       # 返り値側だけが更新されている

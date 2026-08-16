@@ -217,3 +217,23 @@ def test_csv_without_sold_column_treats_all_as_sold(tmp_path):
     path.write_text("title,price\nA,3000\nB,4000\n", encoding="utf-8")
     comps = CsvFileProvider(path).fetch("x")
     assert all(c.sold for c in comps)
+
+
+def test_magnitude_outlier_is_trimmed_even_in_small_samples():
+    """桁間違い級の外れ値は、IQR が効かない少サンプルでも落ちる。"""
+    from mercari_tool.models import SoldComp
+    from mercari_tool.research import analyze
+
+    comps = [SoldComp(title="x", price=p) for p in (9800, 11500, 250000)]
+    stats = analyze(comps, query="q")
+    assert stats.median_price <= 11500          # 250000 に引きずられない
+    assert any("外れ値" in w for w in stats.warnings)
+
+
+def test_one_yen_pollution_is_trimmed():
+    from mercari_tool.models import SoldComp
+    from mercari_tool.research import analyze
+
+    comps = [SoldComp(title="x", price=p) for p in (1, 11000, 11500, 12000)]
+    stats = analyze(comps, query="q")
+    assert stats.mean_price > 10000             # 1円がいれば 8,625 まで下がる

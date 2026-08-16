@@ -1,4 +1,5 @@
 Pillow>=10.0
+pillow-heif>=0.15   # iPhoneのHEIC写真を読むため
 anthropic>=0.60
 python-dotenv>=1.0
 

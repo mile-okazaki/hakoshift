@@ -1,0 +1,27 @@
+{
+  "query": "エアマックス 90",
+  "items": [
+    {
+      "title": "エアマックス 90",
+      "price": 9800,
+      "sold": true,
+      "condition": "美品",
+      "sold_at": "2026-08-01",
+      "listed_at": null,
+      "url": "",
+      "source": "csv",
+      "shipping_included": true
+    },
+    {
+      "title": "エアマックス 90",
+      "price": 9800,
+      "sold": true,
+      "condition": "no_scratch",
+      "sold_at": "2026-08-01",
+      "listed_at": null,
+      "url": "",
+      "source": "manual",
+      "shipping_included": true
+    }
+  ]
+}

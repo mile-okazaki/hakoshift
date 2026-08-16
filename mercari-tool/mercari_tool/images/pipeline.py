@@ -17,6 +17,15 @@ from typing import Iterable, Sequence
 
 from PIL import Image, ImageChops, ImageEnhance, ImageFilter, ImageOps, ImageStat
 
+# iPhone の HEIC を読めるようにする。未導入でも他形式は動く。
+try:
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+    _HEIF_AVAILABLE = True
+except ImportError:  # pragma: no cover - 環境依存
+    _HEIF_AVAILABLE = False
+
 #: メルカリ推奨の出品画像サイズ（正方形）
 DEFAULT_SIZE = 1080
 #: 背景処理用の作業解像度。ここまで縮めてからマスクを作る。
@@ -57,6 +66,11 @@ class ImagePipeline:
     @classmethod
     def open(cls, path: str | Path) -> "ImagePipeline":
         path = Path(path)
+        if path.suffix.lower() in (".heic", ".heif") and not _HEIF_AVAILABLE:
+            raise ValueError(
+                f"{path.name} は HEIC 形式です。読み込むには `pip install pillow-heif` を"
+                "実行してください（iPhone側で「互換性優先」にして JPEG で撮る方法もあります）。"
+            )
         image = Image.open(path)
         # EXIF の回転情報を実ピクセルに反映してから扱う
         image = ImageOps.exif_transpose(image)

@@ -2,6 +2,10 @@
 
 ## comps-sample.csv — 相場データの書式サンプル
 
+> 💡 CSVを手作りしなくても、`research add` に価格を打ち込む方が簡単です:
+> `python -m mercari_tool research add "ナイキ エアマックス 90 27cm" --prices 9800,11500,8900`
+> このCSVは、Excelでまとめて管理したい場合の書式サンプルです。
+
 `data/comps/<検索語をハイフンでつないだ名前>.csv` として置くと
 `research` / `price` / `draft` から自動で読まれます。
 

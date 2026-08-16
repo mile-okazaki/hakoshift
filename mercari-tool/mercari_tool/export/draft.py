@@ -313,7 +313,8 @@ class DraftBuilder:
             steps.append("Claude 未設定のため、商品情報からの組み立てに切り替え")
             return "", "", "", [], []
 
-        title = product.name[:40]
+        # 失敗時は空で返し、呼び出し元のルールベース組み立てへ引き継ぐ
+        title = ""
         catchphrase = ""
         alternatives: list[str] = []
         try:

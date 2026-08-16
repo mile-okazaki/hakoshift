@@ -9,6 +9,7 @@ description = "メルカリ出品支援エンジン（リサーチ・価格設�
 requires-python = ">=3.10"
 dependencies = [
     "Pillow>=10.0",
+    "pillow-heif>=0.15",
     "anthropic>=0.60",
     "python-dotenv>=1.0",
 ]

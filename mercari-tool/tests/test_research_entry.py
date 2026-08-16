@@ -213,3 +213,144 @@ def test_the_saved_file_is_what_the_provider_reads(comps_dir):
     append_comps(comps_dir, "ナイキ エアマックス 90", parse_prices("9800,11500,8900"))
     comps = DirectoryProvider(comps_dir).fetch("ナイキ エアマックス 90")
     assert len(comps) == 3
+
+
+# ── 手置きCSVとの共存 ───────────────────────────────────────
+def _put_csv(comps_dir: Path, query: str) -> Path:
+    """同じ検索語の手置きCSVを用意する。"""
+    from mercari_tool.research import slugify
+
+    target = comps_dir / f"{slugify(query)}.csv"
+    target.write_text(
+        "商品名,価格,売却\n白 27cm,9800,売却済み\n黒 27cm,11500,売却済み\n",
+        encoding="utf-8",
+    )
+    return target
+
+
+def test_append_absorbs_a_hand_made_csv(comps_dir):
+    """CSVが既にあっても、書き写したぶんが闇に消えない。"""
+    _put_csv(comps_dir, "ナイキ 27cm")
+    result = append_comps(comps_dir, "ナイキ 27cm", parse_prices("12000"))
+    assert result.added == 1
+    assert result.total == 3          # CSVの2件 + 追加1件
+
+
+def test_provider_reads_the_merged_json_when_both_exist(comps_dir):
+    """追記後は、リサーチが CSV ではなく統合済み JSON を読む。"""
+    from mercari_tool.research import DirectoryProvider
+
+    _put_csv(comps_dir, "ナイキ 27cm")
+    append_comps(comps_dir, "ナイキ 27cm", parse_prices("12000"))
+    comps = DirectoryProvider(comps_dir).fetch("ナイキ 27cm")
+    assert len(comps) == 3
+    assert {c.price for c in comps} == {9800, 11500, 12000}
+
+
+def test_csv_only_directories_still_work(comps_dir):
+    from mercari_tool.research import DirectoryProvider
+
+    _put_csv(comps_dir, "ナイキ 27cm")
+    comps = DirectoryProvider(comps_dir).fetch("ナイキ 27cm")
+    assert len(comps) == 2
+
+
+def test_absorbed_csv_rows_are_not_duplicated_on_the_next_append(comps_dir):
+    _put_csv(comps_dir, "ナイキ 27cm")
+    append_comps(comps_dir, "ナイキ 27cm", parse_prices("12000"))
+    result = append_comps(comps_dir, "ナイキ 27cm", parse_prices("13000"))
+    assert result.total == 4          # 2(CSV) + 12000 + 13000。CSVが再度足されない
+
+
+# ── レビューで見つかった読み違いの回帰テスト ─────────────────────
+def test_fullwidth_comma_price_is_not_split():
+    """IMEの全角カンマ「９，８００円」を 800 円と読み違えない。"""
+    assert parse_line("９，８００円 売切").comp.price == 9800
+
+
+def test_fullwidth_digits_are_read():
+    assert parse_line("９８００円").comp.price == 9800
+
+
+@pytest.mark.parametrize(
+    "line,expected",
+    [
+        ("1.2万円 売切", 12000),
+        ("1万2000円 売切", 12000),
+        ("9万円 売切", 90000),
+        ("1.5万 売切", 15000),
+        ("2万 売切", 20000),
+    ],
+)
+def test_man_notation_prices(line, expected):
+    """日本語で普通に打つ「万」表記が読める。"""
+    parsed = parse_line(line)
+    assert parsed.ok, parsed.error
+    assert parsed.comp.price == expected
+
+
+def test_price_glued_to_japanese_text_is_read():
+    """「ナイキ9800円」のようにスペース無しで打っても読める。"""
+    parsed = parse_line("ナイキ9800円 売切")
+    assert parsed.comp.price == 9800
+    assert "ナイキ" in parsed.comp.title
+
+
+def test_discount_arrow_takes_the_new_price():
+    """「12000円→9800円」は矢印の後ろが今の価格。"""
+    assert parse_line("12000円→9800円 売切").comp.price == 9800
+
+
+def test_list_price_in_parentheses_is_not_taken():
+    """「9800円（定価15000円）」は最初の価格が売値。"""
+    assert parse_line("9800円（定価15000円）").comp.price == 9800
+
+
+def test_prices_below_the_mercari_minimum_are_rejected():
+    """300円未満に読めた数値は読み違いとして弾く（型番だけの行など）。"""
+    parsed = parse_line("エアマックス90 売切")
+    assert not parsed.ok
+    assert "300" in parsed.error
+
+
+def test_decimal_size_is_not_a_price():
+    """「27.5cm」の整数部 27 を価格として拾わない。"""
+    assert not parse_line("27.5cm エアマックス").ok
+
+
+def test_same_price_on_different_days_are_separate_records(comps_dir):
+    """売却日だけ違う実績は別サンプルとして両方残る。"""
+    comps, _ = parse_lines(
+        ["エアマックス 9800円 売切 8月1日", "エアマックス 9800円 売切 8月10日"]
+    )
+    result = append_comps(comps_dir, "ナイキ", comps)
+    assert result.added == 2
+    assert result.skipped == 0
+
+
+def test_condition_label_and_key_do_not_double_register(comps_dir):
+    """CSV の表示名と行入力の内部キーで、同じ実績が二重登録されない。"""
+    append_comps(
+        comps_dir, "ナイキ",
+        [SoldComp(title="白", price=9800, condition="目立った傷や汚れなし")],
+    )
+    result = append_comps(
+        comps_dir, "ナイキ",
+        [SoldComp(title="白", price=9800, condition="no_scratch")],
+    )
+    assert result.added == 0
+    assert result.skipped == 1
+
+
+def test_price_list_survives_thousands_separators():
+    """「9,800, 11,500」を 9円・800円…に分裂させない。"""
+    assert [c.price for c in parse_prices("9,800, 11,500")] == [9800, 11500]
+
+
+def test_price_list_survives_fullwidth_commas():
+    assert [c.price for c in parse_prices("9800，11500")] == [9800, 11500]
+
+
+def test_price_list_drops_impossible_small_values():
+    """300円未満（メルカリに存在しない値）は区切りの読み違いとして捨てる。"""
+    assert [c.price for c in parse_prices("100,9800")] == [9800]

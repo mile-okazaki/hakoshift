@@ -270,3 +270,15 @@ def test_auto_pipeline_keeps_grey_products_grey(grey_product):
     centre = pipeline.image.size[0] // 2
     box = (centre - 60, centre - 60, centre + 60, centre + 60)
     assert _hue_spread(pipeline.image, box) < 15
+
+
+# ── HEIC（iPhone写真）────────────────────────────────────────
+def test_heic_photo_is_processed(tmp_path):
+    """iPhone の HEIC がそのまま加工パイプラインを通ること。"""
+    pytest.importorskip("pillow_heif")
+    from mercari_tool.images import ImagePipeline
+
+    src = tmp_path / "photo.heic"
+    Image.new("RGB", (1200, 1600), (180, 190, 200)).save(src, format="HEIF")
+    out = ImagePipeline.open(src).auto().save(tmp_path / "out.jpg")
+    assert Image.open(out).size == (1080, 1080)

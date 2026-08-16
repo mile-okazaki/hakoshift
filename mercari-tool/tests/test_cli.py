@@ -123,7 +123,9 @@ def test_research_without_data_fails_with_guidance(workspace, capsys):
     run(workspace, "init")
     capsys.readouterr()
     assert run(workspace, "research", "存在しない品") == 1
-    assert "相場データがありません" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "相場データが見つかりませんでした" in err
+    assert "research add" in err          # 次にやることが書いてある
 
 
 def test_price_suggest_uses_market_data(workspace, capsys):
@@ -686,3 +688,109 @@ def test_draft_all_with_no_products_is_not_an_error(workspace, capsys):
     capsys.readouterr()
     assert run(workspace, "draft", "--all", "--no-copy") == 0
     assert "対象の商品がありません" in capsys.readouterr().out
+
+
+def test_draft_all_with_a_single_product_still_writes_the_csv(workspace, capsys):
+    """--all は対象が1点でも一括モードとして振る舞う。"""
+    run(workspace, "init")
+    run(workspace, "product", "add", "--sku", "A1", "--name", "一点だけ")
+    capsys.readouterr()
+    assert run(workspace, "draft", "--all", "--no-copy") == 0
+    out = capsys.readouterr().out
+    assert "生成 1件" in out
+    assert (workspace / "data" / "output" / "drafts.csv").exists()
+
+
+def test_research_add_then_stats_sees_a_preexisting_csv_too(workspace, capsys):
+    """手置きCSVがある検索語に追記しても、両方のデータが集計に入る。"""
+    run(workspace, "init")
+    from mercari_tool.research import slugify
+    csv_path = workspace / "data" / "comps" / f"{slugify('テスト品')}.csv"
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    csv_path.write_text("商品名,価格\n白,4000\n黒,5000\n", encoding="utf-8")
+    capsys.readouterr()
+    run(workspace, "research", "add", "テスト品", "--prices", "6000", "--quiet")
+    assert "合計 3件" in capsys.readouterr().out
+    capsys.readouterr()
+    assert run(workspace, "research", "テスト品") == 0
+    assert "サンプル       : 3 件" in capsys.readouterr().out
+
+
+# ── レビューで見つかった統合バグの回帰テスト ─────────────────────
+def test_flat_photos_do_not_leak_between_prefix_sharing_skus(workspace, capsys):
+    """photos/A-1_01.jpg の検索に A-10 の写真が混ざらない。"""
+    from mercari_tool.cli import photos_for_sku
+
+    root = workspace / "flat"
+    root.mkdir()
+    for name in ("A-1_01.jpg", "A-10_01.jpg", "A-10_02.jpg", "A-1.jpg"):
+        Image.new("RGB", (600, 600), (200, 200, 200)).save(root / name)
+    found = [Path(p).name for p in photos_for_sku(root, "A-1")]
+    assert found == ["A-1.jpg", "A-1_01.jpg"]
+
+
+def test_rejected_import_row_does_not_leak_into_the_ledger(workspace, capsys):
+    """配送方法が不正で弾いた行の内容が、他の行の保存に紛れて書き込まれない。"""
+    run(workspace, "init")
+    run(workspace, "product", "add", "--sku", "A1", "--name", "正しい名前", "--cost", "1000")
+    bad = workspace / "bad.csv"
+    bad.write_text(
+        "sku,商品名,仕入値,配送方法\n"
+        "A1,汚染された名前,9999,宇宙便\n"      # 弾かれるべき行
+        "NEW1,新規品,500,nekopos\n",           # 正常な行（保存が走る）
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+    run(workspace, "product", "import", str(bad))
+    capsys.readouterr()
+    run(workspace, "product", "show", "A1")
+    data = json.loads(capsys.readouterr().out)
+    assert data["name"] == "正しい名前"        # 弾いた行の内容が漏れていない
+    assert data["cost_price"] == 1000
+
+
+def test_draft_all_continues_past_a_broken_shipping_method(workspace, capsys):
+    """1点の配送区分が壊れていても、残りの生成と一覧CSVは完走する。"""
+    run(workspace, "init")
+    run(workspace, "product", "add", "--sku", "OK1", "--name", "正常品")
+    run(workspace, "product", "add", "--sku", "NG1", "--name", "壊れた品")
+    run(workspace, "product", "add", "--sku", "OK2", "--name", "正常品2")
+    # 登録後に fees.json のキーずれを模擬（README が利用者更新を指示している）
+    products_path = workspace / "data" / "products.json"
+    data = json.loads(products_path.read_text(encoding="utf-8"))
+    for item in data:
+        if item["sku"] == "NG1":
+            item["shipping_method"] = "size80_typo"
+    products_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    capsys.readouterr()
+
+    assert run(workspace, "draft", "--all", "--no-copy") == 0
+    out = capsys.readouterr().out
+    assert "✖ NG1" in out
+    assert "生成 2件 / 失敗 1件" in out
+    assert (workspace / "data" / "output" / "OK1" / "listing.txt").exists()
+    assert (workspace / "data" / "output" / "OK2" / "listing.txt").exists()
+    assert (workspace / "data" / "output" / "drafts.csv").exists()
+
+
+def test_research_add_sku_is_found_by_price_suggest(workspace, capsys):
+    """--sku で書き写した相場が price suggest からそのまま使われる。"""
+    run(workspace, "init")
+    run(workspace, "product", "add", "--sku", "A1", "--name", "エアマックス 90",
+        "--brand", "ナイキ", "--size", "27cm", "--cost", "4000")
+    run(workspace, "research", "add", "--sku", "A1",
+        "--prices", "9800,11500,10200,10000", "--quiet")
+    capsys.readouterr()
+    assert run(workspace, "price", "suggest", "A1") == 0
+    out = capsys.readouterr().out
+    assert "相場中央値" in out                 # コスト逆算ではなく相場ベース
+
+
+def test_research_add_sku_is_found_by_research_stats(workspace, capsys):
+    run(workspace, "init")
+    run(workspace, "product", "add", "--sku", "A1", "--name", "エアマックス 90",
+        "--brand", "ナイキ", "--size", "27cm")
+    run(workspace, "research", "add", "--sku", "A1", "--prices", "9800,11500", "--quiet")
+    capsys.readouterr()
+    assert run(workspace, "research", "--sku", "A1") == 0
+    assert "中央値" in capsys.readouterr().out

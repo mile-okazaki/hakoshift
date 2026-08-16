@@ -241,3 +241,22 @@ def test_fallback_description_states_no_known_defects_when_none(product):
     product.defects = []
     result = build_fallback_description(product)
     assert "見当たりません" in result.description
+
+
+def test_api_errors_are_wrapped_as_llm_error():
+    """認証・接続などの生の例外が LLMError に包まれる。
+
+    呼び出し側は LLMError を合図にルールベースへ切り替えるので、
+    生の例外が抜けると「APIが使えないときはテンプレートで動く」が破れる。
+    """
+
+    class Boom(Exception):
+        pass
+
+    def explode(kwargs):
+        raise Boom("401 authentication_error")
+
+    llm, _ = _client_with(explode)
+    with pytest.raises(LLMError) as excinfo:
+        llm.complete_text("system", "user")
+    assert "失敗しました" in str(excinfo.value)

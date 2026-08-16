@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import copy
 import csv
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -105,12 +106,33 @@ def normalize_condition(value: str) -> str:
     return _CONDITION_LABELS.get(text, text)
 
 
+#: 内部属性名そのままのヘッダー（sku, name, ...）も受け付ける
+_FIELD_NAMES = set(HEADER_ALIASES.values())
+
+
+def _canonical_field(header: str) -> str | None:
+    """ヘッダー1つを内部属性名に読み替える。対応が無ければ None。
+
+    「SKU」「Sku」のような大文字混じりも受ける。Excel のヘッダーは
+    人が打つので、大小文字で全行拒否になるのは厳しすぎる。
+    """
+    key = (header or "").strip()
+    if key in HEADER_ALIASES:
+        return HEADER_ALIASES[key]
+    lowered = key.lower()
+    if lowered in HEADER_ALIASES:
+        return HEADER_ALIASES[lowered]
+    if lowered in _FIELD_NAMES:
+        return lowered
+    return None
+
+
 def normalize_row(raw: dict[str, str]) -> dict[str, object]:
     """CSV の1行を Product の属性名に揃える。"""
     row: dict[str, object] = {}
     for key, value in raw.items():
-        name = HEADER_ALIASES.get((key or "").strip(), (key or "").strip())
-        if name not in {f for f in HEADER_ALIASES.values()}:
+        name = _canonical_field(key)
+        if name is None:
             continue
         text = (value or "").strip()
         if not text:
@@ -166,7 +188,11 @@ def rows_to_products(
         if base is None and not row.get("name"):
             # SKU をそのまま商品名にすると検索も相場取得も当たらない
             errors.append(f"{index}行目: '{sku}' に商品名がありません（SKU を仮の名前にしました）")
-        product = base or Product(sku=sku, name=str(row.get("name") or sku))
+        # 既存の Product を直接書き換えない。呼び出し元が検証で行を弾いたのに
+        # 台帳キャッシュ側だけ書き換わっている、という事故を防ぐ。
+        product = (
+            copy.deepcopy(base) if base else Product(sku=sku, name=str(row.get("name") or sku))
+        )
         for name, value in row.items():
             if name == "sku":
                 continue

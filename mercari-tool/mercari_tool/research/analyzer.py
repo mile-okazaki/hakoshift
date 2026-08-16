@@ -80,18 +80,36 @@ def tokenize_ja(text: str) -> list[str]:
 
 # ── 外れ値の除去 ────────────────────────────────────────────
 def _trim_outliers(prices: Sequence[int]) -> tuple[list[int], int]:
-    """IQR の 1.5 倍を超える価格を落とす。落とした件数も返す。"""
+    """外れ値の価格を落とす。落とした件数も返す。
+
+    2段構え:
+    1. 中央値の 1/6〜6倍 を外れる値を落とす（3件以上のとき）。
+       桁間違い級の外れ値は IQR 自体を引き伸ばしてフェンスを無効化するので、
+       外れ値に強い中央値を基準にした粗い網を先にかける。
+       状態差による正当な価格差（新品1.15倍〜難あり0.6倍）は余裕で収まる。
+    2. 残りに IQR の 1.5 倍ルール（4件以上のとき）。
+    """
     values = sorted(prices)
+    dropped = 0
+
+    if len(values) >= 3:
+        center = statistics.median(values)
+        if center > 0:
+            kept = [v for v in values if center / 6 <= v <= center * 6]
+            if kept:
+                dropped += len(values) - len(kept)
+                values = kept
+
     if len(values) < 4:
-        return list(values), 0
+        return values, dropped
     q1, q3 = statistics.quantiles(values, n=4)[0], statistics.quantiles(values, n=4)[2]
     iqr = q3 - q1
     lower, upper = q1 - 1.5 * iqr, q3 + 1.5 * iqr
     kept = [v for v in values if lower <= v <= upper]
     # 全部落ちてしまうケース（値がほぼ同一で IQR=0 など）は元に戻す
     if not kept:
-        return list(values), 0
-    return kept, len(values) - len(kept)
+        return values, dropped
+    return kept, dropped + (len(values) - len(kept))
 
 
 def _percentile(sorted_values: Sequence[int], ratio: float) -> int:

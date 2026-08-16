@@ -70,13 +70,23 @@ class LLMClient:
         if output_format is not None:
             output_config["format"] = output_format
 
-        response = self.client.messages.create(
-            model=self.config.model,
-            max_tokens=max_tokens,
-            system=system,
-            output_config=output_config,
-            messages=[{"role": "user", "content": user}],
-        )
+        try:
+            response = self.client.messages.create(
+                model=self.config.model,
+                max_tokens=max_tokens,
+                system=system,
+                output_config=output_config,
+                messages=[{"role": "user", "content": user}],
+            )
+        except LLMError:
+            raise
+        except Exception as exc:
+            # 認証エラー・接続エラー・レート制限など、anthropic 側の例外を
+            # すべて LLMError に包む。呼び出し側は LLMError を合図に
+            # ルールベースの組み立てへ切り替える設計のため、生の例外を
+            # 通すと「APIが使えないときはテンプレートに切り替わる」という
+            # 約束が破れてクラッシュする。
+            raise LLMError(f"Claude API の呼び出しに失敗しました: {exc}") from exc
 
         # Claude Opus 5 は安全性判定で応答を拒否することがある。
         # content を読む前に必ず stop_reason を確認する。

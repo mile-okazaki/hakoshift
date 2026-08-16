@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -234,17 +235,50 @@ def cmd_product_import(ctx: AppContext, args: argparse.Namespace) -> int:
 # ══════════════════════════════════════════════════════════
 # research
 # ══════════════════════════════════════════════════════════
+def _research_query_candidates(
+    ctx: AppContext, query: str | None, sku: str | None
+) -> list[str]:
+    """相場を探す検索語の候補を、保存時と同じ規則で作る。
+
+    `research add --sku` は「ブランド 商品名 サイズ」をキーに保存するため、
+    読む側も同じ並びから探さないと、書き写した相場が見つからない。
+    """
+    if query:
+        return [query]
+    if sku:
+        from .export import research_queries
+
+        return research_queries(_require_product(ctx, sku))
+    return []
+
+
+def _fetch_first(
+    ctx: AppContext, queries: Sequence[str], limit: int = 200
+) -> tuple[str, list] | None:
+    """候補を順に試し、最初に見つかった (検索語, サンプル) を返す。"""
+    for query in queries:
+        if not query:
+            continue
+        try:
+            return query, ctx.research_provider.fetch(query, limit=limit)
+        except (FileNotFoundError, RuntimeError, ValueError):
+            continue
+    return None
+
+
 def cmd_research(ctx: AppContext, args: argparse.Namespace) -> int:
-    query = args.query
-    if args.sku:
-        query = query or _require_product(ctx, args.sku).name
-    if not query:
+    queries = _research_query_candidates(ctx, args.query, args.sku)
+    if not queries:
         return _fail("検索語か --sku のどちらかを指定してください。")
 
-    try:
-        comps = ctx.research_provider.fetch(query, limit=args.limit)
-    except (FileNotFoundError, RuntimeError, ValueError) as exc:
-        return _fail(str(exc))
+    found = _fetch_first(ctx, queries, limit=args.limit)
+    if found is None:
+        tried = " / ".join(q for q in queries if q)
+        return _fail(
+            f"相場データが見つかりませんでした（試した検索語: {tried}）。\n"
+            "  research add で書き写すか、data/comps/ にファイルを置いてください。"
+        )
+    query, comps = found
 
     stats = analyze(comps, query=query)
     _print(format_stats(stats))
@@ -326,19 +360,31 @@ def cmd_research_add(ctx: AppContext, args: argparse.Namespace) -> int:
 # ══════════════════════════════════════════════════════════
 # price
 # ══════════════════════════════════════════════════════════
-def _load_market(ctx: AppContext, query: str):
+def _load_market(ctx: AppContext, query: str = "", product: Product | None = None):
+    """相場を読み込む。見つからなければ空の統計を返す。
+
+    商品を渡された場合は `research add --sku` の保存キーと同じ候補
+    （ブランド+商品名+サイズ → ブランド+商品名 → 商品名）を順に試す。
+    """
     from .models import MarketStats
 
-    try:
-        comps = ctx.research_provider.fetch(query, limit=200)
-        return analyze(comps, query=query)
-    except (FileNotFoundError, RuntimeError, ValueError):
-        return MarketStats(query=query)
+    if product is not None and not query:
+        from .export import research_queries
+
+        queries: Sequence[str] = research_queries(product)
+    else:
+        queries = [query]
+
+    found = _fetch_first(ctx, queries)
+    if found is None:
+        return MarketStats(query=queries[0] if queries else "")
+    used, comps = found
+    return analyze(comps, query=used)
 
 
 def cmd_price(ctx: AppContext, args: argparse.Namespace) -> int:
     product = _require_product(ctx, args.sku)
-    market = _load_market(ctx, args.query or product.name)
+    market = _load_market(ctx, args.query or "", product)
     recommendation = ctx.pricing.recommend(product, market, other_cost=args.other_cost)
 
     if args.json:
@@ -527,10 +573,15 @@ def photos_for_sku(root: str | Path, sku: str) -> list[str]:
             for path in sorted(folder.iterdir())
             if path.is_file() and path.suffix.lower() in PHOTO_SUFFIXES
         ]
+    # 平置きは「SKU の直後が英数字でない」ものだけ。前方一致のままだと
+    # A-1 の検索に A-10 の写真が混ざる。
+    boundary = re.compile(re.escape(sku) + r"[^0-9A-Za-z]")
     return [
         str(path)
         for path in sorted(base.glob(f"{sku}*"))
-        if path.is_file() and path.suffix.lower() in PHOTO_SUFFIXES
+        if path.is_file()
+        and path.suffix.lower() in PHOTO_SUFFIXES
+        and boundary.match(path.name)
     ]
 
 
@@ -611,19 +662,22 @@ def cmd_draft(ctx: AppContext, args: argparse.Namespace) -> int:
                 generate_copy=not args.no_copy,
                 output_dir=args.out,
             )
-        except (OSError, ValueError) as exc:
-            # 1点の失敗で残り全部を止めない
-            failures.append(f"{product.sku}: {exc}")
+            target = result.output_dir or ctx.config.output_dir / product.sku
+            shipping_label = ctx.fees.shipping(product.shipping_method).label
+            text_path = write_listing_text(
+                result.draft, target / "listing.txt", shipping_label
+            )
+            json_path = write_draft_json(result, target / "draft.json")
+        except (OSError, ValueError, KeyError) as exc:
+            # 1点の失敗で残り全部を止めない。KeyError は配送区分の未登録
+            # （fees.json のキーずれ）で起きる。
+            message = exc.args[0] if exc.args else str(exc)
+            failures.append(f"{product.sku}: {message}")
             continue
-
-        target = result.output_dir or ctx.config.output_dir / product.sku
-        shipping_label = ctx.fees.shipping(product.shipping_method).label
-        text_path = write_listing_text(result.draft, target / "listing.txt", shipping_label)
-        json_path = write_draft_json(result, target / "draft.json")
         drafts.append(result.draft)
         summary.append((product, result.draft.price, len(result.warnings)))
 
-        if len(products) == 1:
+        if len(products) == 1 and not args.all:
             _print_draft(result, product, text_path, json_path)
         else:
             mark = "⚠" if result.warnings else "✔"
@@ -637,7 +691,7 @@ def cmd_draft(ctx: AppContext, args: argparse.Namespace) -> int:
     for message in failures:
         _print(f"✖ {message}")
 
-    if len(products) > 1:
+    if args.all or len(products) > 1:
         csv_path = Path(args.csv) if args.csv else ctx.config.output_dir / "drafts.csv"
         export_drafts_csv(drafts, csv_path)
         total = sum(price for _, price, _ in summary)
@@ -668,7 +722,7 @@ def cmd_comment(ctx: AppContext, args: argparse.Namespace) -> int:
 
     price = args.price or product.cost_price
     if not args.price:
-        recommendation = ctx.pricing.recommend(product, _load_market(ctx, product.name))
+        recommendation = ctx.pricing.recommend(product, _load_market(ctx, product=product))
         if recommendation.recommended:
             price = recommendation.recommended.price
 
@@ -764,8 +818,11 @@ def cmd_sourcing_rank(ctx: AppContext, args: argparse.Namespace) -> int:
         return _fail("仕入れ先が登録されていません。mercari-tool supplier add で追加してください。")
 
     product = ctx.ledger.products.get(args.sku) if args.sku else None
-    query = args.query or (product.name if product else "")
-    market = _load_market(ctx, query) if query else None
+    market = (
+        _load_market(ctx, args.query or "", product)
+        if (args.query or product)
+        else None
+    )
 
     sale_price = args.price
     if not sale_price and market and market.has_data:
@@ -779,7 +836,7 @@ def cmd_sourcing_rank(ctx: AppContext, args: argparse.Namespace) -> int:
     candidates = [
         SourcingCandidate(
             supplier=s,
-            product_name=product.name if product else query,
+            product_name=product.name if product else (args.query or ""),
             unit_cost=args.unit_cost or s.avg_unit_cost,
             expected_sale_price=sale_price,
             shipping_method=shipping,
